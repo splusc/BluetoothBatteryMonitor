@@ -72,9 +72,6 @@ Set `src/TrayMonitor/TrayMonitor.csproj` to:
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="TrayMonitor.Checks" />
