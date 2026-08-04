@@ -25,7 +25,7 @@ internal sealed class StartupRegistration
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(_keyPath);
-            return key?.GetValue(ValueName) is string value
+            return key?.GetValue(ValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is string value
                 && string.Equals(value, command, StringComparison.OrdinalIgnoreCase);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SecurityException)
