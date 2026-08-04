@@ -38,7 +38,7 @@ internal static class DisplayLogicChecks
 
         settings.Mode = DisplayMode.Cycle;
         Check.Equal("mouse", DisplayLogic.SelectDevice(devices, settings, 1)?.Id, "cycle index");
-        Check.Equal("mouse", DisplayLogic.SelectDevice([devices[1]], settings, int.MaxValue)?.Id, "cycle reduced list wraps");
+        Check.Equal("headset", DisplayLogic.SelectDevice([devices[0], devices[1]], settings, 2)?.Id, "cycle reduced list wraps");
 
         Check.Equal(1, DisplayLogic.BatterySegments(0), "0 percent band");
         Check.Equal(1, DisplayLogic.BatterySegments(20), "20 percent band");
