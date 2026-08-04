@@ -8,7 +8,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly SettingsStore _settingsStore = new();
     private readonly AppSettings _settings;
     private readonly ContextMenuStrip _menu = new();
-    private readonly object _presentationLock = new();
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 60_000 };
     private readonly System.Windows.Forms.Timer _cycleTimer = new() { Interval = 5_000 };
@@ -48,8 +47,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _devices = await _monitor.GetDevicesAsync();
             _emptyStatus = _devices.Count == 0 ? "未发现已配对蓝牙设备" : "没有可显示的设备";
 
-            if (_settingsDirty) _settingsDirty = !_settingsStore.Save(_settings);
-
             if (!_settings.Initialized)
             {
                 var connected = _devices.Where(device => device.IsConnected).ToArray();
@@ -61,6 +58,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     _settingsDirty = !_settingsStore.Save(_settings);
                     if (_settingsDirty) _settings.Initialized = false;
                 }
+            }
+            else if (_settingsDirty)
+            {
+                _settingsDirty = !_settingsStore.Save(_settings);
             }
         }
         catch
@@ -95,27 +96,44 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 .ToArray();
             var tooltip = DisplayLogic.BuildTooltip(monitored, current, _emptyStatus);
             candidate = BatteryIcon.Create(current?.BatteryPercent);
-            lock (_presentationLock)
-            {
-                if (_exiting) return;
+            if (_exiting) return;
 
-                var previousTooltip = _notifyIcon.Text;
-                _notifyIcon.Text = tooltip;
+            var previousIcon = _currentIcon;
+            var previousTooltip = _notifyIcon.Text;
+            _notifyIcon.Text = tooltip;
+            try
+            {
+                _notifyIcon.Icon = candidate;
+            }
+            catch
+            {
                 try
                 {
-                    _notifyIcon.Icon = candidate;
+                    _notifyIcon.Icon = previousIcon;
                 }
                 catch
                 {
+                }
+                try
+                {
                     _notifyIcon.Text = previousTooltip;
-                    throw;
+                }
+                catch
+                {
                 }
 
-                var previousIcon = _currentIcon;
-                _currentIcon = candidate;
-                candidate = null;
-                previousIcon?.Dispose();
+                if (ReferenceEquals(_notifyIcon.Icon, candidate))
+                {
+                    _currentIcon = candidate;
+                    candidate = null;
+                    previousIcon?.Dispose();
+                }
+                return;
             }
+
+            _currentIcon = candidate;
+            candidate = null;
+            previousIcon?.Dispose();
         }
         catch
         {
@@ -217,19 +235,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
-        lock (_presentationLock)
-        {
-            _exiting = true;
-            _refreshTimer.Stop();
-            _cycleTimer.Stop();
-            _refreshTimer.Dispose();
-            _cycleTimer.Dispose();
-            _notifyIcon.Visible = false;
-            _notifyIcon.Dispose();
-            var currentIcon = _currentIcon;
-            _currentIcon = null;
-            currentIcon?.Dispose();
-        }
+        _exiting = true;
+        _refreshTimer.Stop();
+        _cycleTimer.Stop();
+        _refreshTimer.Dispose();
+        _cycleTimer.Dispose();
+        _notifyIcon.Visible = false;
+        _notifyIcon.Dispose();
+        var currentIcon = _currentIcon;
+        _currentIcon = null;
+        currentIcon?.Dispose();
         _menu.Dispose();
         base.ExitThreadCore();
     }
