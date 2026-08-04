@@ -8,6 +8,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly SettingsStore _settingsStore = new();
     private readonly AppSettings _settings;
     private readonly ContextMenuStrip _menu = new();
+    private readonly object _presentationLock = new();
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 60_000 };
     private readonly System.Windows.Forms.Timer _cycleTimer = new() { Interval = 5_000 };
@@ -15,6 +16,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private Icon? _currentIcon;
     private bool _refreshing;
     private bool _exiting;
+    private bool _settingsDirty;
     private int _cycleIndex;
     private string _emptyStatus = "正在读取蓝牙设备";
 
@@ -46,6 +48,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _devices = await _monitor.GetDevicesAsync();
             _emptyStatus = _devices.Count == 0 ? "未发现已配对蓝牙设备" : "没有可显示的设备";
 
+            if (_settingsDirty) _settingsDirty = !_settingsStore.Save(_settings);
+
             if (!_settings.Initialized)
             {
                 var connected = _devices.Where(device => device.IsConnected).ToArray();
@@ -54,7 +58,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     _settings.MonitoredDeviceIds.UnionWith(connected.Select(device => device.Id));
                     _settings.PrimaryDeviceId = connected[0].Id;
                     _settings.Initialized = true;
-                    if (!_settingsStore.Save(_settings)) _settings.Initialized = false;
+                    _settingsDirty = !_settingsStore.Save(_settings);
+                    if (_settingsDirty) _settings.Initialized = false;
                 }
             }
         }
@@ -79,15 +84,46 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void UpdatePresentation()
     {
-        var current = DisplayLogic.SelectDevice(_devices, _settings, _cycleIndex);
-        var monitored = _devices
-            .Where(device => _settings.MonitoredDeviceIds.Contains(device.Id))
-            .ToArray();
-        var icon = BatteryIcon.Create(current?.BatteryPercent);
-        _notifyIcon.Icon = icon;
-        _currentIcon?.Dispose();
-        _currentIcon = icon;
-        _notifyIcon.Text = DisplayLogic.BuildTooltip(monitored, current, _emptyStatus);
+        if (_exiting) return;
+
+        Icon? candidate = null;
+        try
+        {
+            var current = DisplayLogic.SelectDevice(_devices, _settings, _cycleIndex);
+            var monitored = _devices
+                .Where(device => _settings.MonitoredDeviceIds.Contains(device.Id))
+                .ToArray();
+            var tooltip = DisplayLogic.BuildTooltip(monitored, current, _emptyStatus);
+            candidate = BatteryIcon.Create(current?.BatteryPercent);
+            lock (_presentationLock)
+            {
+                if (_exiting) return;
+
+                var previousTooltip = _notifyIcon.Text;
+                _notifyIcon.Text = tooltip;
+                try
+                {
+                    _notifyIcon.Icon = candidate;
+                }
+                catch
+                {
+                    _notifyIcon.Text = previousTooltip;
+                    throw;
+                }
+
+                var previousIcon = _currentIcon;
+                _currentIcon = candidate;
+                candidate = null;
+                previousIcon?.Dispose();
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            candidate?.Dispose();
+        }
     }
 
     private void BuildMenu(object? sender, CancelEventArgs eventArgs)
@@ -167,7 +203,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void SaveAndUpdate()
     {
-        _settingsStore.Save(_settings);
+        _settingsDirty = !_settingsStore.Save(_settings);
         UpdatePresentation();
     }
 
@@ -181,14 +217,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     protected override void ExitThreadCore()
     {
-        _exiting = true;
-        _refreshTimer.Stop();
-        _cycleTimer.Stop();
-        _refreshTimer.Dispose();
-        _cycleTimer.Dispose();
-        _notifyIcon.Visible = false;
-        _notifyIcon.Dispose();
-        _currentIcon?.Dispose();
+        lock (_presentationLock)
+        {
+            _exiting = true;
+            _refreshTimer.Stop();
+            _cycleTimer.Stop();
+            _refreshTimer.Dispose();
+            _cycleTimer.Dispose();
+            _notifyIcon.Visible = false;
+            _notifyIcon.Dispose();
+            var currentIcon = _currentIcon;
+            _currentIcon = null;
+            currentIcon?.Dispose();
+        }
         _menu.Dispose();
         base.ExitThreadCore();
     }
