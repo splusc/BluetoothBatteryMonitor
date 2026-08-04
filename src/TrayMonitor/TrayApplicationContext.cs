@@ -6,6 +6,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly BluetoothMonitor _monitor = new();
     private readonly SettingsStore _settingsStore = new();
+    private readonly StartupRegistration _startupRegistration = new();
     private readonly AppSettings _settings;
     private readonly ContextMenuStrip _menu = new();
     private readonly NotifyIcon _notifyIcon;
@@ -200,6 +201,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _menu.Items.Add(monitored);
         _menu.Items.Add(primary);
         _menu.Items.Add(new ToolStripSeparator());
+
+        var startup = new ToolStripMenuItem("开机自动启动")
+        {
+            Checked = _startupRegistration.IsEnabled(),
+            CheckOnClick = true
+        };
+        startup.Click += (_, _) =>
+        {
+            if (!_startupRegistration.SetEnabled(startup.Checked))
+            {
+                MessageBox.Show("无法修改开机自动启动设置。", "TrayMonitor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            startup.Checked = _startupRegistration.IsEnabled();
+        };
+        _menu.Items.Add(startup);
 
         var refresh = new ToolStripMenuItem("立即刷新");
         refresh.Click += async (_, _) => await RefreshAsync();
