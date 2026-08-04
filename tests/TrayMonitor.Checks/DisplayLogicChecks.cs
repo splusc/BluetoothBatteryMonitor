@@ -35,6 +35,12 @@ internal static class DisplayLogicChecks
         Check.Equal(1, DisplayLogic.BatterySegments(0), "0 percent band");
         Check.Equal(1, DisplayLogic.BatterySegments(20), "20 percent band");
         Check.Equal(2, DisplayLogic.BatterySegments(21), "21 percent band");
+        Check.Equal(2, DisplayLogic.BatterySegments(40), "40 percent band");
+        Check.Equal(3, DisplayLogic.BatterySegments(41), "41 percent band");
+        Check.Equal(3, DisplayLogic.BatterySegments(60), "60 percent band");
+        Check.Equal(4, DisplayLogic.BatterySegments(61), "61 percent band");
+        Check.Equal(4, DisplayLogic.BatterySegments(80), "80 percent band");
+        Check.Equal(5, DisplayLogic.BatterySegments(81), "81 percent band");
         Check.Equal(5, DisplayLogic.BatterySegments(100), "100 percent band");
         Check.Equal(0, DisplayLogic.BatterySegments(null), "unknown band");
 
