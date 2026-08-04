@@ -23,6 +23,7 @@ internal static class SettingsStoreChecks
             Check.True(store.Save(settings), "settings save");
 
             var loaded = store.Load();
+            Check.True(loaded.Initialized, "initialized round trip");
             Check.Equal(DisplayMode.Cycle, loaded.Mode, "mode round trip");
             Check.Equal("mouse", loaded.PrimaryDeviceId, "primary round trip");
             Check.True(loaded.MonitoredDeviceIds.Contains("MOUSE"), "case-insensitive IDs after load");
