@@ -54,7 +54,7 @@ internal static class DisplayLogic
                 device => string.Equals(device.Id, settings.PrimaryDeviceId, StringComparison.OrdinalIgnoreCase)),
             DisplayMode.Lowest => eligible
                 .Where(device => device.BatteryPercent.HasValue)
-                .MinBy(device => device.BatteryPercent),
+                .MinBy(device => device.BatteryPercent) ?? eligible[0],
             DisplayMode.Cycle => eligible[Math.Max(0, cycleIndex) % eligible.Length],
             _ => null
         };

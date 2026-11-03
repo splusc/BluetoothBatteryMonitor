@@ -29,9 +29,8 @@ internal static class DisplayLogicChecks
 
         settings.Mode = DisplayMode.Lowest;
         Check.Equal("mouse", DisplayLogic.SelectDevice(devices, settings, 0)?.Id, "lowest ignores unmonitored device");
-        Check.True(
-            DisplayLogic.SelectDevice([devices[3]], settings, 0) is null,
-            "lowest unknown-only selection");
+        Check.Equal("unknown", DisplayLogic.SelectDevice([devices[3]], settings, 0)?.Id,
+            "unknown-only selection keeps the connected device icon");
         Check.True(
             DisplayLogic.SelectDevice(Array.Empty<BluetoothDeviceSnapshot>(), settings, 0) is null,
             "empty device selection");
