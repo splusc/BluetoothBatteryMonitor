@@ -10,7 +10,13 @@ internal sealed class BluetoothMonitor
 {
     private const string ConnectedProperty = "System.Devices.Aep.IsConnected";
     private const string BatteryProperty = "System.Devices.BatteryLife";
-    private static readonly string[] RequestedProperties = [ConnectedProperty, BatteryProperty];
+    // 设备容器用于关联 HID 硬件标识，避免把同名的 PS4、PS5 混为一类。
+    private const string ContainerProperty = "System.Devices.Aep.ContainerId";
+    // 经典蓝牙的外设类别可识别没有明确类型名称的键盘、鼠标和耳机。
+    private const string MajorClassProperty = "System.Devices.Aep.Bluetooth.Cod.Major";
+    private const string MinorClassProperty = "System.Devices.Aep.Bluetooth.Cod.Minor"; // 蓝牙次类别。
+    private static readonly string[] RequestedProperties =
+        [ConnectedProperty, BatteryProperty, ContainerProperty, MajorClassProperty, MinorClassProperty];
     private static readonly TimeSpan GattTimeout = TimeSpan.FromSeconds(4);
 
     public async Task<IReadOnlyList<BluetoothDeviceSnapshot>> GetDevicesAsync()
@@ -26,14 +32,18 @@ internal sealed class BluetoothMonitor
 
         var leDeviceIds = new HashSet<string>(
             lowEnergy.Select(d => d.Id), StringComparer.OrdinalIgnoreCase);
+        var hardwareByContainer = classic.Count + lowEnergy.Count > 0
+            ? await GetHardwareByContainerAsync()
+            : new Dictionary<Guid, string>();
 
         var snapshots = classic
             .Concat(lowEnergy)
-            .Select(Map)
+            .Select(device => Map(device, hardwareByContainer))
             .GroupBy(device => device.Id, StringComparer.OrdinalIgnoreCase)
             .Select(group => group
                 .OrderByDescending(device => device.IsConnected)
                 .ThenByDescending(device => device.BatteryPercent.HasValue)
+                .ThenByDescending(device => device.IconKind is not DeviceIconKind.Unknown and not DeviceIconKind.Gamepad)
                 .First())
             .OrderBy(device => device.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
@@ -139,15 +149,48 @@ internal sealed class BluetoothMonitor
         return completed == task ? await task : null;
     }
 
-    private static BluetoothDeviceSnapshot Map(DeviceInformation device)
+    // 只枚举 HID 元数据，不打开输入设备；查询失败不得影响原有电量监控。
+    private static async Task<Dictionary<Guid, string>> GetHardwareByContainerAsync()
+    {
+        var result = new Dictionary<Guid, string>();
+        try
+        {
+            var interfaces = await DeviceInformation.FindAllAsync(
+                "System.Devices.InterfaceClassGuid:=\"{4D1E55B2-F16F-11CF-88CB-001111000030}\"",
+                ["System.Devices.ContainerId"], DeviceInformationKind.DeviceInterface).AsTask().WaitAsync(GattTimeout);
+            foreach (var entry in interfaces)
+            {
+                if (!entry.Properties.TryGetValue("System.Devices.ContainerId", out var value)
+                    || !Guid.TryParse(value?.ToString(), out var container) || container == Guid.Empty) continue;
+                result[container] = result.TryGetValue(container, out var existing) ? existing + " " + entry.Id : entry.Id;
+            }
+        }
+        catch
+        {
+            // 驱动未提供容器信息时保留名称识别和手动选择，不中断托盘刷新。
+        }
+        return result;
+    }
+
+    // 将设备名称、经典蓝牙类别及同容器的硬件标识统一交给图形分类逻辑。
+    private static BluetoothDeviceSnapshot Map(DeviceInformation device, IReadOnlyDictionary<Guid, string> hardwareByContainer)
     {
         var connected = device.Properties.TryGetValue(ConnectedProperty, out var connectedValue)
             && connectedValue is true;
         device.Properties.TryGetValue(BatteryProperty, out var batteryValue);
+        device.Properties.TryGetValue(ContainerProperty, out var containerValue);
+        var hardwareId = device.Id;
+        if (Guid.TryParse(containerValue?.ToString(), out var container)
+            && hardwareByContainer.TryGetValue(container, out var hidIds)) hardwareId += " " + hidIds;
+        device.Properties.TryGetValue(MajorClassProperty, out var majorValue);
+        device.Properties.TryGetValue(MinorClassProperty, out var minorValue);
+        int.TryParse(Convert.ToString(majorValue, CultureInfo.InvariantCulture), out var majorClass);
+        int.TryParse(Convert.ToString(minorValue, CultureInfo.InvariantCulture), out var minorClass);
         return new BluetoothDeviceSnapshot(
             device.Id,
             string.IsNullOrWhiteSpace(device.Name) ? "Bluetooth device" : device.Name,
             connected,
-            NormalizeBattery(batteryValue));
+            NormalizeBattery(batteryValue),
+            DeviceIconClassifier.Classify(device.Name, hardwareId, majorClass, minorClass));
     }
 }

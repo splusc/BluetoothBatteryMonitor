@@ -96,7 +96,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 .Where(device => _settings.MonitoredDeviceIds.Contains(device.Id))
                 .ToArray();
             var tooltip = DisplayLogic.BuildTooltip(monitored, current, _emptyStatus);
-            candidate = BatteryIcon.Create(current?.BatteryPercent);
+            // 外观独立于设备选择策略，轮播时图形随当前设备一起切换。
+            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect,
+                current is null ? DeviceIconKind.Unknown : _settings.GetIconKind(current));
             if (_exiting) return;
 
             var previousIcon = _currentIcon;
@@ -157,6 +159,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         AddMode(modes, "轮播", DisplayMode.Cycle);
         _menu.Items.Add(modes);
 
+        // 新增外观选项，默认仍使用原有横向电池。
+        var effects = new ToolStripMenuItem("电量显示效果");
+        foreach (var (text, effect) in new[] { ("默认（当前）", IconEffect.Default), ("个性化图标", IconEffect.Personalized) })
+        {
+            var item = new ToolStripMenuItem(text) { Checked = _settings.IconEffect == effect };
+            item.Click += (_, _) => { _settings.IconEffect = effect; SaveAndUpdate(); };
+            effects.DropDownItems.Add(item);
+        }
+        _menu.Items.Add(effects);
+
         var monitored = new ToolStripMenuItem("监控设备");
         var primary = new ToolStripMenuItem("主设备");
         foreach (var device in _devices)
@@ -200,6 +212,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _menu.Items.Add(monitored);
         _menu.Items.Add(primary);
+        _menu.Items.Add(BuildDeviceIconMenu());
         _menu.Items.Add(new ToolStripSeparator());
 
         var startup = new ToolStripMenuItem("开机自动启动")
@@ -233,6 +246,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
             SaveAndUpdate();
         };
         parent.DropDownItems.Add(item);
+    }
+
+    // 驱动隐藏型号时可指定内置图形，恢复自动识别只需删除对应覆盖值。
+    private ToolStripMenuItem BuildDeviceIconMenu()
+    {
+        var menu = new ToolStripMenuItem("设备图标");
+        foreach (var device in _devices)
+        {
+            var deviceMenu = new ToolStripMenuItem(DeviceLabel(device));
+            var automatic = new ToolStripMenuItem($"自动识别（{DeviceIconClassifier.Label(device.IconKind)}）")
+            {
+                Checked = !_settings.DeviceIcons.TryGetValue(device.Id, out var saved) || !Enum.IsDefined(saved)
+            };
+            automatic.Click += (_, _) => { _settings.DeviceIcons.Remove(device.Id); SaveAndUpdate(); };
+            deviceMenu.DropDownItems.Add(automatic);
+            deviceMenu.DropDownItems.Add(new ToolStripSeparator());
+            foreach (var kind in Enum.GetValues<DeviceIconKind>())
+            {
+                var item = new ToolStripMenuItem(DeviceIconClassifier.Label(kind))
+                {
+                    Checked = _settings.DeviceIcons.TryGetValue(device.Id, out var selected) && selected == kind
+                };
+                item.Click += (_, _) => { _settings.DeviceIcons[device.Id] = kind; SaveAndUpdate(); };
+                deviceMenu.DropDownItems.Add(item);
+            }
+            menu.DropDownItems.Add(deviceMenu);
+        }
+        if (_devices.Count == 0) menu.DropDownItems.Add(new ToolStripMenuItem("未发现设备") { Enabled = false });
+        return menu;
     }
 
     private void SaveAndUpdate()

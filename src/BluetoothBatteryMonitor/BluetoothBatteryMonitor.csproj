@@ -11,5 +11,9 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="BluetoothBatteryMonitor.Checks" />
+    <!-- 图形嵌入程序集，单文件发布无需额外素材目录。 -->
+    <EmbeddedResource Include="Assets\DeviceIcons\*.png" />
+    <!-- 将第三方图形许可同时包含在单文件发布的程序集内。 -->
+    <EmbeddedResource Include="Assets\DeviceIcons\LICENSE.txt" />
   </ItemGroup>
 </Project>

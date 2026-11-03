@@ -31,6 +31,11 @@ internal sealed class SettingsStore
             settings.MonitoredDeviceIds = new HashSet<string>(
                 settings.MonitoredDeviceIds ?? [],
                 StringComparer.OrdinalIgnoreCase);
+            // 反序列化不会保留字典比较器，设备 ID 必须继续忽略大小写。
+            var icons = new Dictionary<string, DeviceIconKind>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (id, kind) in settings.DeviceIcons ?? []) icons[id] = kind;
+            settings.DeviceIcons = icons;
+            if (!Enum.IsDefined(settings.IconEffect)) settings.IconEffect = IconEffect.Default;
             return settings;
         }
         catch (Exception exception) when (

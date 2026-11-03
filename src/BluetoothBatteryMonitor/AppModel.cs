@@ -13,7 +13,9 @@ internal sealed record BluetoothDeviceSnapshot(
     string Id,
     string Name,
     bool IsConnected,
-    byte? BatteryPercent);
+    byte? BatteryPercent,
+    // 自动识别的设备图形；旧调用方默认为未知设备。
+    DeviceIconKind IconKind = DeviceIconKind.Unknown);
 
 internal sealed class AppSettings
 {
@@ -21,6 +23,14 @@ internal sealed class AppSettings
     public DisplayMode Mode { get; set; } = DisplayMode.Lowest;
     public HashSet<string> MonitoredDeviceIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? PrimaryDeviceId { get; set; }
+    // 图标外观独立于主设备、最低电量和轮播模式，旧设置保持当前效果。
+    public IconEffect IconEffect { get; set; } = IconEffect.Default;
+    // 仅保存手动指定的内置图标，删除键即恢复自动识别。
+    public Dictionary<string, DeviceIconKind> DeviceIcons { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    // 未知枚举值不能阻止托盘刷新，回退到设备的自动识别结果。
+    public DeviceIconKind GetIconKind(BluetoothDeviceSnapshot device) =>
+        DeviceIcons.TryGetValue(device.Id, out var kind) && Enum.IsDefined(kind) ? kind : device.IconKind;
 }
 
 internal static class DisplayLogic
