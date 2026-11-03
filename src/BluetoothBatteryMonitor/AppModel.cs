@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace TrayMonitor;
+namespace BluetoothBatteryMonitor;
 
 internal enum DisplayMode
 {

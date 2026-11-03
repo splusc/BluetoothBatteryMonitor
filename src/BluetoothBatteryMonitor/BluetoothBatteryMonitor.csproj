@@ -3,11 +3,13 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon>Assets\TrayMonitor.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\BluetoothBatteryMonitor.ico</ApplicationIcon>
+    <Product>蓝牙电量监视器</Product>
+    <AssemblyTitle>蓝牙电量监视器</AssemblyTitle>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="TrayMonitor.Checks" />
+    <InternalsVisibleTo Include="BluetoothBatteryMonitor.Checks" />
   </ItemGroup>
 </Project>

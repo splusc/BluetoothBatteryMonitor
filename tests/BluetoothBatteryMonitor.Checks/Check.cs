@@ -1,4 +1,4 @@
-namespace TrayMonitor.Checks;
+namespace BluetoothBatteryMonitor.Checks;
 
 internal static class Check
 {

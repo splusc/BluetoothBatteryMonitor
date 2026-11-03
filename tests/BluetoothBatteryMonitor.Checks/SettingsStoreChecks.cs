@@ -1,12 +1,12 @@
-using TrayMonitor;
+using BluetoothBatteryMonitor;
 
-namespace TrayMonitor.Checks;
+namespace BluetoothBatteryMonitor.Checks;
 
 internal static class SettingsStoreChecks
 {
     public static void Run()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"TrayMonitor-{Guid.NewGuid():N}");
+        var directory = Path.Combine(Path.GetTempPath(), $"BluetoothBatteryMonitor-{Guid.NewGuid():N}");
         var path = Path.Combine(directory, "settings.json");
         try
         {

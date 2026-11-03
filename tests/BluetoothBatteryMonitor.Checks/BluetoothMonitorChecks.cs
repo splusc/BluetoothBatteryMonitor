@@ -1,6 +1,6 @@
-using TrayMonitor;
+using BluetoothBatteryMonitor;
 
-namespace TrayMonitor.Checks;
+namespace BluetoothBatteryMonitor.Checks;
 
 internal static class BluetoothMonitorChecks
 {

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace TrayMonitor;
+namespace BluetoothBatteryMonitor;
 
 internal sealed class SettingsStore
 {
@@ -17,7 +17,7 @@ internal sealed class SettingsStore
     {
         _path = path ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TrayMonitor",
+            "BluetoothBatteryMonitor",
             "settings.json");
     }
 

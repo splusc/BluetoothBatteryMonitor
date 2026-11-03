@@ -1,12 +1,12 @@
 using Microsoft.Win32;
 using System.Security;
 
-namespace TrayMonitor;
+namespace BluetoothBatteryMonitor;
 
 internal sealed class StartupRegistration
 {
     private const string DefaultKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "TrayMonitor";
+    private const string ValueName = "BluetoothBatteryMonitor";
 
     private readonly string _keyPath;
     private readonly string? _executablePath;

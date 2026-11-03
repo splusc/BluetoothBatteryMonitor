@@ -1,8 +1,9 @@
-using TrayMonitor.Checks;
+using BluetoothBatteryMonitor.Checks;
 
 DisplayLogicChecks.Run();
 SettingsStoreChecks.Run();
 AppIconChecks.Run();
+LegacyDataCleanupChecks.Run();
 StartupRegistrationChecks.Run();
 BluetoothMonitorChecks.Run();
 BatteryIconChecks.Run();

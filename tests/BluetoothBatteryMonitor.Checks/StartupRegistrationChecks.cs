@@ -1,17 +1,17 @@
 using Microsoft.Win32;
-using TrayMonitor;
+using BluetoothBatteryMonitor;
 
-namespace TrayMonitor.Checks;
+namespace BluetoothBatteryMonitor.Checks;
 
 internal static class StartupRegistrationChecks
 {
     public static void Run()
     {
-        var keyPath = $"Software\\TrayMonitor.Tests\\{Guid.NewGuid():N}";
-        var environmentVariable = $"TrayMonitorTestsProgramFiles{Guid.NewGuid():N}";
+        var keyPath = $"Software\\BluetoothBatteryMonitor.Tests\\{Guid.NewGuid():N}";
+        var environmentVariable = $"BluetoothBatteryMonitorTestsProgramFiles{Guid.NewGuid():N}";
         var previousEnvironmentValue = Environment.GetEnvironmentVariable(environmentVariable, EnvironmentVariableTarget.Process);
-        const string executablePath = @"C:\Program Files\TrayMonitor\TrayMonitor.exe";
-        const string command = "\"C:\\Program Files\\TrayMonitor\\TrayMonitor.exe\"";
+        const string executablePath = @"C:\Program Files\BluetoothBatteryMonitor\BluetoothBatteryMonitor.exe";
+        const string command = "\"C:\\Program Files\\BluetoothBatteryMonitor\\BluetoothBatteryMonitor.exe\"";
 
         try
         {
@@ -22,14 +22,14 @@ internal static class StartupRegistrationChecks
             Check.True(registration.IsEnabled(), "startup enabled");
 
             using (var key = Registry.CurrentUser.OpenSubKey(keyPath))
-                Check.Equal(command, key!.GetValue("TrayMonitor") as string, "startup command");
+                Check.Equal(command, key!.GetValue("BluetoothBatteryMonitor") as string, "startup command");
 
             using (var key = Registry.CurrentUser.OpenSubKey(keyPath, writable: true))
-                key!.SetValue("TrayMonitor", $"\"%{environmentVariable}%\\TrayMonitor\\TrayMonitor.exe\"", RegistryValueKind.ExpandString);
+                key!.SetValue("BluetoothBatteryMonitor", $"\"%{environmentVariable}%\\BluetoothBatteryMonitor\\BluetoothBatteryMonitor.exe\"", RegistryValueKind.ExpandString);
             Check.Equal(false, registration.IsEnabled(), "startup expanded command disabled");
 
             using (var key = Registry.CurrentUser.OpenSubKey(keyPath, writable: true))
-                key!.SetValue("TrayMonitor", "\"C:\\Other\\TrayMonitor.exe\"", RegistryValueKind.String);
+                key!.SetValue("BluetoothBatteryMonitor", "\"C:\\Other\\BluetoothBatteryMonitor.exe\"", RegistryValueKind.String);
             Check.Equal(false, registration.IsEnabled(), "startup changed command disabled");
 
             Check.True(registration.SetEnabled(false), "startup disable");

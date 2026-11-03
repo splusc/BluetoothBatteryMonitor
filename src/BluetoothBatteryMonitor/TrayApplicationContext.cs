@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace TrayMonitor;
+namespace BluetoothBatteryMonitor;
 
 internal sealed class TrayApplicationContext : ApplicationContext
 {
@@ -211,7 +211,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (!_startupRegistration.SetEnabled(startup.Checked))
             {
-                MessageBox.Show("无法修改开机自动启动设置。", "TrayMonitor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("无法修改开机自动启动设置。", "蓝牙电量监视器", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             startup.Checked = _startupRegistration.IsEnabled();
         };

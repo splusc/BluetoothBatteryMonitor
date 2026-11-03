@@ -1,6 +1,6 @@
 using System.Xml.Linq;
 
-namespace TrayMonitor.Checks;
+namespace BluetoothBatteryMonitor.Checks;
 
 internal static class AppIconChecks
 {
@@ -9,13 +9,13 @@ internal static class AppIconChecks
     public static void Run()
     {
         var root = FindRepositoryRoot();
-        var projectPath = Path.Combine(root, "src", "TrayMonitor", "TrayMonitor.csproj");
-        var iconPath = Path.Combine(root, "src", "TrayMonitor", "Assets", "TrayMonitor.ico");
+        var projectPath = Path.Combine(root, "src", "BluetoothBatteryMonitor", "BluetoothBatteryMonitor.csproj");
+        var iconPath = Path.Combine(root, "src", "BluetoothBatteryMonitor", "Assets", "BluetoothBatteryMonitor.ico");
         var configuredIcon = XDocument.Load(projectPath)
             .Descendants("ApplicationIcon")
             .SingleOrDefault()?.Value;
 
-        Check.Equal(@"Assets\TrayMonitor.ico", configuredIcon, "application icon configuration");
+        Check.Equal(@"Assets\BluetoothBatteryMonitor.ico", configuredIcon, "application icon configuration");
         Check.True(File.Exists(iconPath), "application icon file");
 
         using var reader = new BinaryReader(File.OpenRead(iconPath));
@@ -44,7 +44,7 @@ internal static class AppIconChecks
              directory is not null;
              directory = directory.Parent)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "src", "TrayMonitor", "TrayMonitor.csproj")))
+            if (File.Exists(Path.Combine(directory.FullName, "src", "BluetoothBatteryMonitor", "BluetoothBatteryMonitor.csproj")))
                 return directory.FullName;
         }
 

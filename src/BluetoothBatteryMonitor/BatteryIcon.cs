@@ -2,7 +2,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
-namespace TrayMonitor;
+namespace BluetoothBatteryMonitor;
 
 internal static class BatteryIcon
 {
