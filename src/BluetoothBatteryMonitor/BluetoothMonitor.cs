@@ -101,6 +101,8 @@ internal sealed class BluetoothMonitor
     private static async Task<byte?> ReadBatteryViaGattAsync(string deviceId)
     {
         BluetoothLEDevice? device = null;
+        // GATT 服务拥有独立的原生句柄，必须在每次读取后释放，不能只释放蓝牙设备。
+        IReadOnlyList<GattDeviceService>? services = null;
         try
         {
             device = await BluetoothLEDevice.FromIdAsync(deviceId);
@@ -109,11 +111,12 @@ internal sealed class BluetoothMonitor
 
             var serviceResult = await device.GetGattServicesForUuidAsync(
                 GattServiceUuids.Battery);
+            services = serviceResult.Services;
             if (serviceResult.Status != GattCommunicationStatus.Success
-                || serviceResult.Services.Count == 0)
+                || services.Count == 0)
                 return null;
 
-            var charResult = await serviceResult.Services[0]
+            var charResult = await services[0]
                 .GetCharacteristicsForUuidAsync(GattCharacteristicUuids.BatteryLevel);
             if (charResult.Status != GattCommunicationStatus.Success
                 || charResult.Characteristics.Count == 0)
@@ -133,7 +136,15 @@ internal sealed class BluetoothMonitor
         }
         finally
         {
-            device?.Dispose();
+            try
+            {
+                if (services is not null)
+                    foreach (var service in services) service.Dispose();
+            }
+            finally
+            {
+                device?.Dispose();
+            }
         }
     }
 

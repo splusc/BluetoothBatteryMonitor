@@ -14,6 +14,10 @@ internal static class BatteryIconChecks
         // 通过实际绘图检查电量填充与颜色，零电量不得仍显示一格。
         foreach (var kind in Enum.GetValues<DeviceIconKind>())
         {
+            // 限制原生解码缓冲，防止把美术原图误嵌入运行时资源。
+            using var stream = typeof(BatteryIcon).Assembly.GetManifestResourceStream($"BluetoothBatteryMonitor.Assets.DeviceIcons.{kind}.png")!;
+            using var resource = System.Drawing.Image.FromStream(stream);
+            Check.True(resource.Width * resource.Height * 4 <= 4096, $"{kind} 设备图形解码缓冲不超过 4KB");
             using var fullIcon = BatteryIcon.Create(100, IconEffect.Personalized, kind);
             using var lowIcon = BatteryIcon.Create(15, IconEffect.Personalized, kind);
             using var emptyIcon = BatteryIcon.Create(0, IconEffect.Personalized, kind);

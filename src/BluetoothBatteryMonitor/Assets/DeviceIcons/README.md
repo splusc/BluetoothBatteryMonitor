@@ -7,3 +7,5 @@
 PS4 外轮廓参考 [GamepadViewer PS4 图形](https://gamepadviewer.com/ps4-assets/base.svg)，PS5 轮廓依据用户提供的 DualSense 正面参考绘制。电池由程序绘制，不包含在图片中。
 
 所有 PNG 都是透明背景白色图形，作为嵌入资源随单文件 EXE 发布；替换图片时需保留相应文件名。
+
+根目录 PNG 为预绘制的 32×32 托盘资源，已包含各设备的位置和手柄比例补偿，每张图的解码缓冲仅为 4KB。384×384 原始剪影保留在 `Source/`，不嵌入程序集。修改原始剪影后运行 `scripts/Export-TrayDeviceIcons.ps1` 重新生成托盘资源。

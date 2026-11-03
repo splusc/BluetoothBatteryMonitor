@@ -13,6 +13,8 @@ Windows 11 tray application “蓝牙电量监视器” that displays Bluetooth-
 - Use `开机自动启动` (Start with Windows) to launch BluetoothBatteryMonitor when the current Windows user signs in.
 - Settings are stored in `%LocalAppData%\BluetoothBatteryMonitor\settings.json`.
 
+内存优化：设备图预绘制为 32×32，电量和图标不变时复用当前托盘图标，每次读取后释放 GATT 服务和设备。应用关闭 .NET 分层编译以减少常驻代码开销。进程包含 .NET、WinForms 和 Windows 蓝牙组件的基础内存，实际占用随设备、运行时和使用时间变化。
+
 BluetoothBatteryMonitor reads battery information exposed by Windows. Devices that use vendor-specific battery protocols are shown as battery unknown.
 
 ## Build

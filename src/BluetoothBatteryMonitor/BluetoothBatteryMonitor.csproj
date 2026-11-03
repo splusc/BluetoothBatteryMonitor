@@ -8,6 +8,8 @@
     <AssemblyTitle>蓝牙电量监视器</AssemblyTitle>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- 常驻托盘没有高吞吐热路径，关闭分层编译以减少多级 JIT 的代码与元数据开销。 -->
+    <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="BluetoothBatteryMonitor.Checks" />

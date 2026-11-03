@@ -51,17 +51,15 @@ internal static class BatteryIcon
         }
     }
 
-    // 使用确认后的透明剪影，竖向电池覆盖图形右侧，匹配预览中的组合比例。
+    // 使用预绘制的透明剪影，竖向电池覆盖图形右侧，匹配预览中的组合比例。
     private static void DrawPersonalized(Graphics graphics, byte? percent, DeviceIconKind kind)
     {
         if (!Enum.IsDefined(kind)) kind = DeviceIconKind.Unknown;
         using var stream = typeof(BatteryIcon).Assembly.GetManifestResourceStream($"BluetoothBatteryMonitor.Assets.DeviceIcons.{kind}.png")
             ?? throw new InvalidOperationException($"缺少设备图标资源：{kind}");
         using var image = Image.FromStream(stream);
-        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        // 索尼手柄的轮廓较宽扁，放大后与 Xbox 保持相近的可见高度。
-        var sony = kind is DeviceIconKind.DualShock4 or DeviceIconKind.DualSense;
-        graphics.DrawImage(image, sony ? new RectangleF(-2, 0, 34, 34) : new RectangleF(0, 4.48f, 28.16f, 28.16f));
+        // 32×32 资源已包含确认过的位置与尺寸，解码缓冲仅 4KB，无需运行时缩放。
+        graphics.DrawImageUnscaled(image, 0, 0);
 
         // 不让设备图形透进电池空槽；外框与填充使用和默认样式相同的阶段颜色。
         graphics.FillRectangle(Brushes.Black, 20, 3, 12, 28);

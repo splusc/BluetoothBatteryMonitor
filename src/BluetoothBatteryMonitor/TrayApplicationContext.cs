@@ -14,6 +14,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _cycleTimer = new() { Interval = 5_000 };
     private IReadOnlyList<BluetoothDeviceSnapshot> _devices = [];
     private Icon? _currentIcon;
+    // 只记住当前图标的输入，避免未变化的刷新重复解码 PNG 和分配原生图形资源。
+    private (byte? Percent, IconEffect Effect, DeviceIconKind Kind)? _currentIconKey;
     private bool _refreshing;
     private bool _exiting;
     private bool _settingsDirty;
@@ -25,6 +27,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _settings = _settingsStore.Load();
         _menu.Opening += BuildMenu;
         _currentIcon = BatteryIcon.Create(null);
+        _currentIconKey = (null, IconEffect.Default, DeviceIconKind.Unknown);
         _notifyIcon = new NotifyIcon
         {
             ContextMenuStrip = _menu,
@@ -96,9 +99,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 .Where(device => _settings.MonitoredDeviceIds.Contains(device.Id))
                 .ToArray();
             var tooltip = DisplayLogic.BuildTooltip(monitored, current, _emptyStatus);
+            // 默认样式不依赖设备类型；轮播到相同电量的设备时只需更新提示文字。
+            var kind = _settings.IconEffect == IconEffect.Personalized && current is not null
+                ? _settings.GetIconKind(current) : DeviceIconKind.Unknown;
+            var iconKey = (current?.BatteryPercent, _settings.IconEffect, kind);
+            if (_currentIcon is not null && _currentIconKey == iconKey)
+            {
+                if (_notifyIcon.Text != tooltip) _notifyIcon.Text = tooltip;
+                return;
+            }
             // 外观独立于设备选择策略，轮播时图形随当前设备一起切换。
-            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect,
-                current is null ? DeviceIconKind.Unknown : _settings.GetIconKind(current));
+            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect, kind);
             if (_exiting) return;
 
             var previousIcon = _currentIcon;
@@ -128,6 +139,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 if (ReferenceEquals(_notifyIcon.Icon, candidate))
                 {
                     _currentIcon = candidate;
+                    _currentIconKey = iconKey;
                     candidate = null;
                     previousIcon?.Dispose();
                 }
@@ -135,6 +147,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             _currentIcon = candidate;
+            _currentIconKey = iconKey;
             candidate = null;
             previousIcon?.Dispose();
         }

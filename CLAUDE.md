@@ -33,6 +33,7 @@ The solution has no `.sln` file. Projects are referenced directly via `<ProjectR
 3. **`BatteryIcon`** draws a 32×32 tray icon programmatically (GDI+): battery outline with 5 segments filled by percentage band, or a "?" for unknown battery. Colors: red ≤20%, gold ≤60%, green >60%.
 4. **`DeviceIconClassifier`** 优先依据同一设备容器内的 HID VID/PID 区分 PS4／PS5，其他情况结合明确名称与经典蓝牙类别识别键盘、鼠标、耳机及手柄。型号不明的手柄使用去掉 Xbox 标志的通用图形。`AppSettings.IconEffect` 独立于 `Mode`；`DeviceIcons` 保存每个设备的手动选择并忽略设备 ID 大小写。
 5. **个性化图标** 直接使用 `Assets/DeviceIcons` 中的嵌入 PNG，白色图形配竖向电池。电池填充与外框共用默认样式的三阶段颜色：≤20% 红色、21%～60% 黄色、>60% 绿色，未知电量为灰色。三个手柄素材来自已确认的效果图，PS4／PS5 通过绘制尺寸补偿达到与 Xbox 相近的视觉大小。素材嵌入程序集，单文件发布不依赖外部图片。鼠标、键盘、耳机、蓝牙图形派生自 Lucide，许可见素材目录。
+6. **内存与绘图** 运行时只嵌入预绘制的 32×32 设备图，384×384 原始剪影保留在 `Source/`；生成脚本为 `scripts/Export-TrayDeviceIcons.ps1`。托盘复用当前电量、效果和类型相同的图标，仍独立刷新悬浮提示。每次 GATT 电量读取结束后同时释放服务与设备句柄。主项目关闭分层编译，减少后台常驻场景下的多级 JIT 开销；勿通过定时强制 GC 或工作集修剪伪装内存降幅。
 
 ### Display modes
 
