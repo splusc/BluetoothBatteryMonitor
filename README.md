@@ -34,6 +34,17 @@ dotnet run --project tests/BluetoothBatteryMonitor.Checks/BluetoothBatteryMonito
 
 ## Publish
 
+精简版（约 25.6MB），需要目标电脑已安装 [.NET 10 Desktop Runtime x64](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)。需要桌面运行时，只有基础 .NET Runtime 不够。
+
 ```powershell
-dotnet publish src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/win-x64
+dotnet publish src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj -p:PublishProfile=Lean -o artifacts/lean/win-x64
 ```
+
+便携版自带运行时，可在未安装 .NET 的电脑上运行。使用 ZIP 压缩分发，使用前解压。
+
+```powershell
+dotnet publish src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj -p:PublishProfile=Portable -o artifacts/portable/win-x64
+Compress-Archive -LiteralPath artifacts/portable/win-x64/BluetoothBatteryMonitor.exe -DestinationPath artifacts/portable/BluetoothBatteryMonitor.zip -Force
+```
+
+两个发布配置均仅保留简体中文语言资源及英文回退资源，关闭调试符号输出。未启用 EXE 内部压缩：实测它会增加运行时的私有内存，不适合本程序的低内存目标。ZIP 只影响下载和存储体积，解压后的运行内存不受压缩分发影响。

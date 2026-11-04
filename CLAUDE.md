@@ -11,8 +11,9 @@ dotnet build src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj
 # Run all tests (a custom console runner; prints "All checks passed." on success)
 dotnet run --project tests/BluetoothBatteryMonitor.Checks/BluetoothBatteryMonitor.Checks.csproj
 
-# Publish as single-file x64 executable (output: artifacts/win-x64/BluetoothBatteryMonitor.exe)
-dotnet publish src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/win-x64
+# 发布 x64 单文件：精简版依赖桌面运行时，便携版自带运行时。
+dotnet publish src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj -p:PublishProfile=Lean -o artifacts/lean/win-x64
+dotnet publish src/BluetoothBatteryMonitor/BluetoothBatteryMonitor.csproj -p:PublishProfile=Portable -o artifacts/portable/win-x64
 ```
 
 The solution has no `.sln` file. Projects are referenced directly via `<ProjectReference>` in the test `.csproj`. The test project gets `InternalsVisibleTo` access to `BluetoothBatteryMonitor` internals.
@@ -34,6 +35,7 @@ The solution has no `.sln` file. Projects are referenced directly via `<ProjectR
 4. **`DeviceIconClassifier`** 优先依据同一设备容器内的 HID VID/PID 区分 PS4／PS5，其他情况结合明确名称与经典蓝牙类别识别键盘、鼠标、耳机及手柄。型号不明的手柄使用去掉 Xbox 标志的通用图形。`AppSettings.IconEffect` 独立于 `Mode`；`DeviceIcons` 保存每个设备的手动选择并忽略设备 ID 大小写。
 5. **个性化图标** 直接使用 `Assets/DeviceIcons` 中的嵌入 PNG，白色图形配竖向电池。电池填充与外框共用默认样式的三阶段颜色：≤20% 红色、21%～60% 黄色、>60% 绿色，未知电量为灰色。三个手柄素材来自已确认的效果图，PS4／PS5 通过绘制尺寸补偿达到与 Xbox 相近的视觉大小。素材嵌入程序集，单文件发布不依赖外部图片。鼠标、键盘、耳机、蓝牙图形派生自 Lucide，许可见素材目录。
 6. **内存与绘图** 运行时只嵌入预绘制的 32×32 设备图，384×384 原始剪影保留在 `Source/`；生成脚本为 `scripts/Export-TrayDeviceIcons.ps1`。托盘复用当前电量、效果和类型相同的图标，仍独立刷新悬浮提示。每次 GATT 电量读取结束后同时释放服务与设备句柄。主项目关闭分层编译，减少后台常驻场景下的多级 JIT 开销；勿通过定时强制 GC 或工作集修剪伪装内存降幅。
+7. **发布体积** `Properties/PublishProfiles/Lean.pubxml` 生成依赖 .NET 10 Desktop Runtime x64 的精简单文件；`Portable.pubxml` 生成自带运行时的便携单文件，可用 ZIP 压缩分发。二者只保留简体中文卫星资源与英文回退，不输出调试符号。保持 `EnableCompressionInSingleFile=false`：虽然内部压缩可缩小 EXE，但蓝牙读取诊断中的私有内存由约 22MB 升至约 49MB。
 
 ### Display modes
 
