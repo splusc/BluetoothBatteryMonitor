@@ -23,6 +23,7 @@ internal static class TrayPresentationChecks
             MonitoredDeviceIds = new(StringComparer.OrdinalIgnoreCase) { "mouse" }
         };
         Set(context, "_settings", settings);
+        Set(context, "_showBattery", true);
         Set(context, "_notifyIcon", notify);
         Set(context, "_emptyStatus", "没有可显示的设备");
         Set(context, "_devices", new[] { new BluetoothDeviceSnapshot("mouse", "鼠标", true, 80, DeviceIconKind.Mouse) });
@@ -70,6 +71,15 @@ internal static class TrayPresentationChecks
             Set(context, "_devices", new[] { new BluetoothDeviceSnapshot("mouse", "新名称", true, null, DeviceIconKind.Mouse) });
             Update.Invoke(context, null);
             Check.True(!ReferenceEquals(defaultIcon, notify.Icon), "电量变为未知时更新图标");
+            settings.IconEffect = IconEffect.Personalized;
+            settings.DeviceIcons.Clear();
+            Set(context, "_devices", new[] { new BluetoothDeviceSnapshot("mouse", "Wireless Controller", true, null, DeviceIconKind.DualShock4) });
+            Update.Invoke(context, null);
+            using var expected = BatteryIcon.Create(null, IconEffect.Personalized, DeviceIconKind.DualShock4);
+            using var expectedPixels = expected.ToBitmap();
+            using var actualPixels = notify.Icon!.ToBitmap();
+            Check.True(Enumerable.Range(0, 1024).All(p => expectedPixels.GetPixel(p % 32, p / 32) == actualPixels.GetPixel(p % 32, p / 32)),
+                "最低电量模式在 PS4 电量未知时仍显示手柄，不能退回蓝牙图标");
         }
         finally
         {

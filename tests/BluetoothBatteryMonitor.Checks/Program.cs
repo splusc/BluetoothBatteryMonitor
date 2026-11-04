@@ -1,5 +1,13 @@
 using BluetoothBatteryMonitor.Checks;
 
+// 手动硬件验收，只读快照，不修改用户配置。
+if (args is ["--devices"])
+{
+    foreach (var device in await new BluetoothBatteryMonitor.BluetoothMonitor().GetDevicesAsync())
+        Console.WriteLine($"{device.Name}: connected={device.IsConnected}, icon={device.IconKind}, battery={device.BatteryPercent?.ToString() ?? "unknown"}");
+    return;
+}
+
 // 性能探针单独运行，便于在同一环境对比优化前后。
 if (args is ["--refresh-benchmark"])
 {

@@ -8,6 +8,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly SettingsStore _settingsStore = new();
     private readonly StartupRegistration _startupRegistration = new();
     private readonly AppSettings _settings;
+    private readonly bool _showBattery;
     private readonly ContextMenuStrip _menu = new();
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 60_000 };
@@ -22,8 +23,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private int _cycleIndex;
     private string _emptyStatus = "正在读取蓝牙设备";
 
-    public TrayApplicationContext()
+    public TrayApplicationContext(bool showBattery = true)
     {
+        _showBattery = showBattery;
         _settings = _settingsStore.Load();
         _menu.Opening += BuildMenu;
         _currentIcon = BatteryIcon.Create(null);
@@ -109,7 +111,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 return;
             }
             // 外观独立于设备选择策略，轮播时图形随当前设备一起切换。
-            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect, kind);
+            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect, kind, _showBattery);
             if (_exiting) return;
 
             var previousIcon = _currentIcon;

@@ -34,7 +34,7 @@ internal sealed class BluetoothMonitor
             lowEnergy.Select(d => d.Id), StringComparer.OrdinalIgnoreCase);
         var hardwareByContainer = classic.Count + lowEnergy.Count > 0
             ? await GetHardwareByContainerAsync()
-            : new Dictionary<Guid, string>();
+            : new Dictionary<Guid, List<string>>();
 
         var snapshots = classic
             .Concat(lowEnergy)
@@ -74,6 +74,20 @@ internal sealed class BluetoothMonitor
                         : s)
                     .ToArray();
             }
+        }
+
+        // 用同一容器内的 Sony HID 接口读取 PS4，不能按 Wireless Controller 名称匹配。
+        var ds4Targets = snapshots.Where(s => s.IsConnected && !s.BatteryPercent.HasValue
+            && s.IconKind == DeviceIconKind.DualShock4).ToArray();
+        foreach (var target in ds4Targets)
+        {
+            var endpoint = classic.Concat(lowEnergy).First(d => d.Id.Equals(target.Id, StringComparison.OrdinalIgnoreCase));
+            if (!endpoint.Properties.TryGetValue(ContainerProperty, out var value)
+                || !Guid.TryParse(value?.ToString(), out var container)
+                || !hardwareByContainer.TryGetValue(container, out var interfaces)) continue;
+            var battery = await DualShockBatteryReader.ReadAsync(interfaces);
+            if (battery.HasValue)
+                snapshots = snapshots.Select(s => s.Id == target.Id ? s with { BatteryPercent = battery } : s).ToArray();
         }
 
         return snapshots;
@@ -160,10 +174,10 @@ internal sealed class BluetoothMonitor
         return completed == task ? await task : null;
     }
 
-    // 只枚举 HID 元数据，不打开输入设备；查询失败不得影响原有电量监控。
-    private static async Task<Dictionary<Guid, string>> GetHardwareByContainerAsync()
+    // 保留各个 HID 路径，既用于型号识别，也用于同容器 PS4 的电量读取。
+    private static async Task<Dictionary<Guid, List<string>>> GetHardwareByContainerAsync()
     {
-        var result = new Dictionary<Guid, string>();
+        var result = new Dictionary<Guid, List<string>>();
         try
         {
             var interfaces = await DeviceInformation.FindAllAsync(
@@ -173,7 +187,8 @@ internal sealed class BluetoothMonitor
             {
                 if (!entry.Properties.TryGetValue("System.Devices.ContainerId", out var value)
                     || !Guid.TryParse(value?.ToString(), out var container) || container == Guid.Empty) continue;
-                result[container] = result.TryGetValue(container, out var existing) ? existing + " " + entry.Id : entry.Id;
+                if (!result.TryGetValue(container, out var paths)) result[container] = paths = [];
+                paths.Add(entry.Id);
             }
         }
         catch
@@ -184,7 +199,7 @@ internal sealed class BluetoothMonitor
     }
 
     // 将设备名称、经典蓝牙类别及同容器的硬件标识统一交给图形分类逻辑。
-    private static BluetoothDeviceSnapshot Map(DeviceInformation device, IReadOnlyDictionary<Guid, string> hardwareByContainer)
+    private static BluetoothDeviceSnapshot Map(DeviceInformation device, IReadOnlyDictionary<Guid, List<string>> hardwareByContainer)
     {
         var connected = device.Properties.TryGetValue(ConnectedProperty, out var connectedValue)
             && connectedValue is true;
@@ -192,7 +207,7 @@ internal sealed class BluetoothMonitor
         device.Properties.TryGetValue(ContainerProperty, out var containerValue);
         var hardwareId = device.Id;
         if (Guid.TryParse(containerValue?.ToString(), out var container)
-            && hardwareByContainer.TryGetValue(container, out var hidIds)) hardwareId += " " + hidIds;
+            && hardwareByContainer.TryGetValue(container, out var hidIds)) hardwareId += " " + string.Join(" ", hidIds);
         device.Properties.TryGetValue(MajorClassProperty, out var majorValue);
         device.Properties.TryGetValue(MinorClassProperty, out var minorValue);
         int.TryParse(Convert.ToString(majorValue, CultureInfo.InvariantCulture), out var majorClass);

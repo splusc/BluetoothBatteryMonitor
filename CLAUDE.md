@@ -29,11 +29,11 @@ The solution has no `.sln` file. Projects are referenced directly via `<ProjectR
 
 ### Data flow
 
-1. **`BluetoothMonitor`** queries both classic and LE paired Bluetooth devices via `DeviceInformation.FindAllAsync`, requesting `IsConnected` and `BatteryLife` properties. Duplicates (same device ID across classic + LE) are deduplicated preferring the connected+known-battery entry. Battery values are normalized to `byte?` (0–100).
+1. **`BluetoothMonitor`** queries both classic and LE paired Bluetooth devices via `DeviceInformation.FindAllAsync`, requesting `IsConnected` and `BatteryLife` properties. Duplicates (same device ID across classic + LE) are deduplicated preferring the connected+known-battery entry. Battery values are normalized to `byte?` (0–100). `DualShockBatteryReader` reads Sony PS4 Bluetooth HID reports from the same device container with bounded I/O, using the DS4Windows 8/11-level conversion for discharging/charging.
 2. **`AppModel.cs`** holds `BluetoothDeviceSnapshot` (Id, Name, IsConnected, BatteryPercent), `AppSettings` (Mode, MonitoredDeviceIds, PrimaryDeviceId, Initialized), and `DisplayLogic` — pure functions for selecting a device (primary/lowest/cycle) and building the tooltip text (63-char limit with ellipsis truncation).
 3. **`BatteryIcon`** draws a 32×32 tray icon programmatically (GDI+): battery outline with 5 segments filled by percentage band, or a "?" for unknown battery. Colors: red ≤20%, gold ≤60%, green >60%.
 4. **`DeviceIconClassifier`** 优先依据同一设备容器内的 HID VID/PID 区分 PS4／PS5，其他情况结合明确名称与经典蓝牙类别识别键盘、鼠标、耳机及手柄。型号不明的手柄使用去掉 Xbox 标志的通用图形。`AppSettings.IconEffect` 独立于 `Mode`；`DeviceIcons` 保存每个设备的手动选择并忽略设备 ID 大小写。
-5. **个性化图标** 直接使用 `Assets/DeviceIcons` 中的嵌入 PNG，白色图形配竖向电池。电池填充与外框共用默认样式的三阶段颜色：≤20% 红色、21%～60% 黄色、>60% 绿色，未知电量为灰色。三个手柄素材来自已确认的效果图，PS4／PS5 通过绘制尺寸补偿达到与 Xbox 相近的视觉大小。素材嵌入程序集，单文件发布不依赖外部图片。鼠标、键盘、耳机、蓝牙图形派生自 Lucide，许可见素材目录。
+5. **个性化图标** 使用 `Assets/DeviceIcons` 中的嵌入 PNG，裁去透明留白后保持比例、居中显示；按明确的像素矩形绘制，避免高 DPI 下放大裁切。竖向电池覆盖最右侧，宽度按画布的 33% 取整为 11 像素。电池填充与外框共用默认样式的三阶段颜色：≤20% 红色、21%～60% 黄色、>60% 绿色，未知电量为灰色。`--base-icon` 可仅预览基础设备图形，不修改保存设置。素材嵌入程序集，单文件发布不依赖外部图片。鼠标、键盘、耳机、蓝牙图形派生自 Lucide，许可见素材目录。
 6. **内存与绘图** 运行时只嵌入预绘制的 32×32 设备图，384×384 原始剪影保留在 `Source/`；生成脚本为 `scripts/Export-TrayDeviceIcons.ps1`。托盘复用当前电量、效果和类型相同的图标，仍独立刷新悬浮提示。每次 GATT 电量读取结束后同时释放服务与设备句柄。主项目关闭分层编译，减少后台常驻场景下的多级 JIT 开销；勿通过定时强制 GC 或工作集修剪伪装内存降幅。
 7. **发布体积** `Properties/PublishProfiles/Lean.pubxml` 生成依赖 .NET 10 Desktop Runtime x64 的精简单文件；`Portable.pubxml` 生成自带运行时的便携单文件，可用 ZIP 压缩分发。二者只保留简体中文卫星资源与英文回退，不输出调试符号。保持 `EnableCompressionInSingleFile=false`：虽然内部压缩可缩小 EXE，但蓝牙读取诊断中的私有内存由约 22MB 升至约 49MB。
 
@@ -42,7 +42,7 @@ The solution has no `.sln` file. Projects are referenced directly via `<ProjectR
 | Mode | Behavior |
 |------|----------|
 | `Primary` | Shows the device whose ID matches `PrimaryDeviceId` exactly. |
-| `Lowest` | Shows the monitored connected device with the lowest known battery. Devices with unknown battery are skipped. |
+| `Lowest` | Shows the monitored connected device with the lowest known battery; if all are unknown, keeps the first connected device's icon. |
 | `Cycle` | Rotates through all monitored connected devices every 5 seconds. |
 
 ### Persistence
