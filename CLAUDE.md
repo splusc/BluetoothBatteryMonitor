@@ -36,6 +36,7 @@ The solution has no `.sln` file. Projects are referenced directly via `<ProjectR
 5. **个性化图标** 使用 `Assets/DeviceIcons` 中的嵌入 PNG，裁去透明留白后保持比例、居中显示；按明确的像素矩形绘制，避免高 DPI 下放大裁切。竖向电池覆盖最右侧，宽度按画布的 33% 取整为 11 像素。电池填充与外框共用默认样式的三阶段颜色：≤20% 红色、21%～60% 黄色、>60% 绿色，未知电量为灰色。`--base-icon` 可仅预览基础设备图形，不修改保存设置。素材嵌入程序集，单文件发布不依赖外部图片。鼠标、键盘、耳机、蓝牙图形派生自 Lucide，许可见素材目录。
 6. **内存与绘图** 运行时只嵌入预绘制的 32×32 设备图，384×384 原始剪影保留在 `Source/`；生成脚本为 `scripts/Export-TrayDeviceIcons.ps1`。托盘复用当前电量、效果和类型相同的图标，仍独立刷新悬浮提示。每次 GATT 电量读取结束后同时释放服务与设备句柄。主项目关闭分层编译，减少后台常驻场景下的多级 JIT 开销；勿通过定时强制 GC 或工作集修剪伪装内存降幅。
 7. **发布体积** `Properties/PublishProfiles/Lean.pubxml` 生成依赖 .NET 10 Desktop Runtime x64 的精简单文件；`Portable.pubxml` 生成自带运行时的便携单文件，可用 ZIP 压缩分发。二者只保留简体中文卫星资源与英文回退，不输出调试符号。保持 `EnableCompressionInSingleFile=false`：虽然内部压缩可缩小 EXE，但蓝牙读取诊断中的私有内存由约 22MB 升至约 49MB。
+8. **托盘菜单** `ContextMenuStrip` 只作为菜单项和点击事件的数据模型，不交给 `NotifyIcon` 显示。右键松开时先构建内容，再由 `NativeTrayMenu` 使用 `TrackPopupMenuEx` 显示系统菜单；隐藏所有者遵循 `SetForegroundWindow`／`WM_NULL` 焦点协议。`NativePopupMenu` 用安全句柄管理主、子菜单，选择命令后执行原有 `PerformClick`，取消时不执行操作；菜单打开期间不得重建命令映射。第三方电脑管家的提示需要实机复测，不能只凭原生菜单断言误报消失。
 
 ### Display modes
 

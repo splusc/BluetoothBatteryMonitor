@@ -1,5 +1,3 @@
-using System.ComponentModel;
-
 namespace BluetoothBatteryMonitor;
 
 internal sealed class TrayApplicationContext : ApplicationContext
@@ -10,6 +8,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly AppSettings _settings;
     private readonly bool _showBattery;
     private readonly ContextMenuStrip _menu = new();
+    private readonly NativeTrayMenu _nativeMenu = new(); // 只由系统原生菜单负责显示和键盘导航。
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 60_000 };
     private readonly System.Windows.Forms.Timer _cycleTimer = new() { Interval = 5_000 };
@@ -20,6 +19,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool _refreshing;
     private bool _exiting;
     private bool _settingsDirty;
+    private bool _menuOpen; // 系统菜单运行消息循环时，防止再次右键重建正在使用的命令。
     private int _cycleIndex;
     private string _emptyStatus = "正在读取蓝牙设备";
 
@@ -27,16 +27,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _showBattery = showBattery;
         _settings = _settingsStore.Load();
-        _menu.Opening += BuildMenu;
         _currentIcon = BatteryIcon.Create(null);
         _currentIconKey = (null, IconEffect.Default, DeviceIconKind.Unknown);
         _notifyIcon = new NotifyIcon
         {
-            ContextMenuStrip = _menu,
             Icon = _currentIcon,
             Text = _emptyStatus,
             Visible = true
         };
+        _notifyIcon.MouseUp += ShowMenu;
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
         _cycleTimer.Tick += (_, _) => AdvanceCycle();
         _refreshTimer.Start();
@@ -162,7 +161,23 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void BuildMenu(object? sender, CancelEventArgs eventArgs)
+    // 先准备全部菜单内容，再交给系统显示，首次打开也不依赖空菜单的 Opening 事件。
+    private void ShowMenu(object? sender, MouseEventArgs eventArgs)
+    {
+        if (_exiting || _menuOpen || eventArgs.Button != MouseButtons.Right) return;
+        _menuOpen = true;
+        try
+        {
+            BuildMenu();
+            _nativeMenu.Show(_menu.Items, Cursor.Position);
+        }
+        finally
+        {
+            _menuOpen = false;
+        }
+    }
+
+    private void BuildMenu()
     {
         var oldItems = _menu.Items.Cast<ToolStripItem>().ToArray();
         _menu.Items.Clear();
@@ -176,7 +191,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         // 新增外观选项，默认仍使用原有横向电池。
         var effects = new ToolStripMenuItem("电量显示效果");
-        foreach (var (text, effect) in new[] { ("默认（当前）", IconEffect.Default), ("个性化图标", IconEffect.Personalized) })
+        foreach (var (text, effect) in new[] { ("默认", IconEffect.Default), ("个性化图标", IconEffect.Personalized) })
         {
             var item = new ToolStripMenuItem(text) { Checked = _settings.IconEffect == effect };
             item.Click += (_, _) => { _settings.IconEffect = effect; SaveAndUpdate(); };
@@ -318,6 +333,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var currentIcon = _currentIcon;
         _currentIcon = null;
         currentIcon?.Dispose();
+        _nativeMenu.Dispose();
         _menu.Dispose();
         base.ExitThreadCore();
     }
