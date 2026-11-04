@@ -18,6 +18,16 @@ internal static class DeviceIconChecks
         Check.Equal(DeviceIconKind.Keyboard, DeviceIconClassifier.Classify("蓝牙键盘"), "中文键盘名称");
         Check.Equal(DeviceIconKind.Mouse, DeviceIconClassifier.Classify("MX Master", majorClass: 5, minorClass: 0x20), "鼠标设备类别");
         Check.Equal(DeviceIconKind.Keyboard, DeviceIconClassifier.Classify("K380", majorClass: 5, minorClass: 0x10), "键盘设备类别");
+        // 本机 BLE 键盘的实际 Appearance 为 961，不能依赖型号名称包含 keyboard。
+        Check.Equal(DeviceIconKind.Keyboard, DeviceIconClassifier.Classify("3MRGB-209-BT", appearance: 961), "BLE 键盘依据系统外观类型识别");
+        Check.Equal(DeviceIconKind.Mouse, DeviceIconClassifier.Classify("外设", appearance: 962), "BLE 鼠标依据系统外观类型识别");
+        Check.Equal(DeviceIconKind.Keyboard, DeviceIconClassifier.Classify("BT mouse", appearance: 961), "BLE 键盘类型优先于误导性名称");
+        Check.Equal(DeviceIconKind.Mouse, DeviceIconClassifier.Classify("Keyboard", majorClass: 5, minorClass: 0x20), "经典蓝牙鼠标类型优先于名称");
+        Check.Equal(DeviceIconKind.Unknown, DeviceIconClassifier.Classify("外设", appearance: 960), "通用 HID 外观不猜测键盘");
+        Check.Equal(DeviceIconKind.Keyboard, DeviceIconClassifier.Classify("Keyboard", appearance: 0), "缺少外观属性仍可名称兜底");
+        Check.Equal(DeviceIconKind.DualSense, DeviceIconClassifier.Classify("Wireless Controller", @"HID\VID_054C&PID_0CE6", appearance: 964), "BLE 游戏手柄保留硬件型号识别");
+        Check.Equal(DeviceIconKind.Gamepad, DeviceIconClassifier.Classify("外设", appearance: 964), "BLE 通用游戏手柄不冒充具体型号");
+        Check.Equal(DeviceIconKind.Xbox, DeviceIconClassifier.Classify("Xbox Wireless Controller", appearance: 964), "通用 BLE 类型保留明确的 Xbox 型号名称");
         Check.Equal(DeviceIconKind.Headphones, DeviceIconClassifier.Classify("AirPods Pro"), "耳机名称");
         Check.Equal(DeviceIconKind.Headphones, DeviceIconClassifier.Classify("Xbox Wireless Headset"), "Xbox 耳机不能误认成手柄");
         Check.Equal(DeviceIconKind.Headphones, DeviceIconClassifier.Classify("PS5 Headset"), "PS5 耳机不能误认成手柄");

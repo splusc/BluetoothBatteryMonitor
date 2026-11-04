@@ -22,10 +22,11 @@ internal enum DeviceIconKind
     Gamepad // 无法确定型号的手柄。
 }
 
-// 优先使用设备硬件标识；只有明确的名称或蓝牙类别才确定具体图形。
+// 优先使用型号硬件标识和系统蓝牙类型，名称只在系统未提供明确类型时兜底。
 internal static class DeviceIconClassifier
 {
-    public static DeviceIconKind Classify(string name, string hardwareId = "", int majorClass = 0, int minorClass = 0)
+    // appearance 为 Windows 返回的 BLE 外观编码，缺失时为 0。
+    public static DeviceIconKind Classify(string name, string hardwareId = "", int majorClass = 0, int minorClass = 0, int appearance = 0)
     {
         var hardware = Regex.Match(hardwareId,
             @"VID(?:_|&(?:[0-9A-F]{4})?)([0-9A-F]{4}).*?PID[_&]([0-9A-F]{4})",
@@ -40,6 +41,17 @@ internal static class DeviceIconClassifier
             }
         }
 
+        // BLE 外观的 0x03C1/0x03C2 分别是键盘/鼠标；组合键盘可能同时暴露鼠标 HID。
+        if (appearance == 0x03C1) return DeviceIconKind.Keyboard;
+        if (appearance == 0x03C2) return DeviceIconKind.Mouse;
+        // 经典蓝牙外设次类别中的高两位分别表示键盘和指向设备。
+        if (majorClass == 5)
+        {
+            if ((minorClass & 0x20) != 0) return DeviceIconKind.Mouse;
+            if ((minorClass & 0x10) != 0) return DeviceIconKind.Keyboard;
+        }
+        if (majorClass == 4 && minorClass is 1 or 2 or 4 or 6) return DeviceIconKind.Headphones;
+
         var normalized = name.ToLowerInvariant();
         // 平台品牌也会出现在耳机、键盘等设备名称里，应先判断明确的设备类型。
         if (normalized.Contains("headphone") || normalized.Contains("headset") || normalized.Contains("earbud")
@@ -50,14 +62,9 @@ internal static class DeviceIconClassifier
         if (normalized.Contains("dualsense") || Regex.IsMatch(normalized, @"\bps[ -]?5\b")) return DeviceIconKind.DualSense;
         if (Regex.IsMatch(normalized, @"dualshock[ -]?4\b|\bps[ -]?4\b")) return DeviceIconKind.DualShock4;
 
-        // 蓝牙外设次类别中的高两位分别表示键盘和指向设备。
-        if (majorClass == 5)
-        {
-            if ((minorClass & 0x20) != 0) return DeviceIconKind.Mouse;
-            if ((minorClass & 0x10) != 0) return DeviceIconKind.Keyboard;
-            if ((minorClass & 0x0F) is 1 or 2) return DeviceIconKind.Gamepad;
-        }
-        if (majorClass == 4 && minorClass is 1 or 2 or 4 or 6) return DeviceIconKind.Headphones;
+        // 通用游戏设备类型不能盖过上面已识别出的具体手柄型号。
+        if (appearance is 0x03C3 or 0x03C4 || (majorClass == 5 && (minorClass & 0x0F) is 1 or 2))
+            return DeviceIconKind.Gamepad;
         if (normalized.Contains("controller") || normalized.Contains("gamepad") || normalized.Contains("手柄")) return DeviceIconKind.Gamepad;
         return DeviceIconKind.Unknown;
     }
