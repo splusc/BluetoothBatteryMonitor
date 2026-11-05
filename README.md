@@ -7,11 +7,13 @@ Windows 11 tray application “蓝牙电量监视器” that displays Bluetooth-
 - Hover over the tray icon to see available battery status for monitored devices.
 - Right-click the icon to choose `主设备` (Primary), `最低电量` (Lowest), or `轮播` (Cycle) mode.
 - Use `监控设备` (Monitor Devices) and `主设备` (Primary Device) to configure what the icon represents.
-- `电量显示效果` 可选择 `默认` 或 `个性化图标`。首次使用和旧设置默认保留原有横向彩色电池；个性化效果为白色设备图形搭配竖向电池，不改变主设备、最低电量和轮播模式。两种效果的电量颜色均为 ≤20% 红色、21%～60% 黄色、>60% 绿色；个性化电池外框同步变色，未知电量显示灰色问号。
+- `电量显示效果` 可选择 `默认` 或 `个性化图标`。首次使用和旧设置默认保留原有横向彩色电池；个性化效果为白色设备图形搭配竖向电池，不改变主设备、最低电量和轮播模式。两种效果默认的电量颜色均为 ≤20% 红色、21%～60% 黄色、>60% 绿色，可通过 `电量颜色阈值…` 调整；个性化电池外框同步变色，未知电量显示灰色问号。
 - 个性化内置图标包括键盘、鼠标、耳机、Xbox、PS4 DualShock 4、PS5 DualSense 和无 Xbox 标志的通用手柄。设备剪影裁去留白后保持原始宽高比、居中显示；手柄等比放大到托盘方框允许的最大尺寸，电池覆盖最右侧，宽度约为图标的 33%（32 像素画布上取整为 11 像素）。
 - 在 `设备图标 → 设备名称` 中，可为每台蓝牙设备手动选择内置图标，也可恢复 `自动识别`。设备的 VID/PID 硬件标识优先于名称；键盘、鼠标优先依据 Windows 的 BLE Appearance 或经典蓝牙类别识别，名称仅作兜底。只报告 `Wireless Controller` 且没有可靠型号信息时显示无品牌手柄，不猜测 PS4／PS5。自定义图片导入暂未提供。
 - Use `开机自动启动` (Start with Windows) to launch BluetoothBatteryMonitor when the current Windows user signs in.
 - Settings are stored in `%LocalAppData%\BluetoothBatteryMonitor\settings.json`.
+- `电量颜色阈值…` 可设置红色、黄色的电量上限，默认分别为 20% 和 60%（红色 ≤20%，黄色 >20% 且 ≤60%，绿色 >60%）。需满足 0% ≤ 红色上限 < 黄色上限 <100%；修改后立即生效并保存，默认样式和个性化图标共用，未知电量仍为灰色。颜色分段与低电量通知阈值独立。
+- 在 `低电量提醒（≤20%）…` 中可设置 1%～100% 的通知阈值，默认 20%，重启后保留。已连接的监控设备电量小于等于阈值时发送 Windows 通知，同次发现的设备合并提醒；持续低电量不重复提醒，回升到阈值以上后可再次触发。短暂断连或电量未知不会重置提醒，程序重启后会重新检查。此阈值不改变图标的颜色分段；Windows 的通知设置和勿扰模式可能影响通知展示。
 
 托盘右键菜单使用 Windows 原生系统菜单，保留所有显示模式、设备选择、图标和开机启动选项。菜单内容在显示前准备完成，避免首次空菜单取消显示；原生菜单负责焦点、键盘导航和点击空白关闭。此调整用于改善第三方电脑管家对 WinForms 弹出菜单的兼容性，具体判定仍需在对应电脑管家环境中验证。
 

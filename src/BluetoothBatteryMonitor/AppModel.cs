@@ -27,6 +27,12 @@ internal sealed class AppSettings
     public IconEffect IconEffect { get; set; } = IconEffect.Default;
     // 仅保存手动指定的内置图标，删除键即恢复自动识别。
     public Dictionary<string, DeviceIconKind> DeviceIcons { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    // 低电量通知阈值（含边界），不改变托盘图标既有的颜色分段。
+    public int LowBatteryThreshold { get; set; } = 20;
+    // 电量小于等于此值显示红色，独立于通知阈值。
+    public int RedBatteryThreshold { get; set; } = 20;
+    // 高于红色上限且小于等于此值显示黄色，其余显示绿色。
+    public int YellowBatteryThreshold { get; set; } = 60;
 
     // 未知枚举值不能阻止托盘刷新，回退到设备的自动识别结果。
     public DeviceIconKind GetIconKind(BluetoothDeviceSnapshot device) =>

@@ -6,6 +6,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly SettingsStore _settingsStore = new();
     private readonly StartupRegistration _startupRegistration = new();
     private readonly AppSettings _settings;
+    private readonly LowBatteryReminder _lowBatteryReminder = new(); // 提醒状态独立于轮播和图标刷新。
     private readonly bool _showBattery;
     private readonly ContextMenuStrip _menu = new();
     private readonly NativeTrayMenu _nativeMenu = new(); // 只由系统原生菜单负责显示和键盘导航。
@@ -15,7 +16,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private IReadOnlyList<BluetoothDeviceSnapshot> _devices = [];
     private Icon? _currentIcon;
     // 只记住当前图标的输入，避免未变化的刷新重复解码 PNG 和分配原生图形资源。
-    private (byte? Percent, IconEffect Effect, DeviceIconKind Kind)? _currentIconKey;
+    private (byte? Percent, IconEffect Effect, DeviceIconKind Kind, int Red, int Yellow)? _currentIconKey;
     private bool _refreshing;
     private bool _exiting;
     private bool _settingsDirty;
@@ -28,7 +29,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _showBattery = showBattery;
         _settings = _settingsStore.Load();
         _currentIcon = BatteryIcon.Create(null);
-        _currentIconKey = (null, IconEffect.Default, DeviceIconKind.Unknown);
+        _currentIconKey = (null, IconEffect.Default, DeviceIconKind.Unknown, _settings.RedBatteryThreshold, _settings.YellowBatteryThreshold);
         _notifyIcon = new NotifyIcon
         {
             Icon = _currentIcon,
@@ -68,6 +69,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 _settingsDirty = !_settingsStore.Save(_settings);
             }
+            ShowLowBatteryNotification();
         }
         catch
         {
@@ -103,14 +105,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
             // 默认样式不依赖设备类型；轮播到相同电量的设备时只需更新提示文字。
             var kind = _settings.IconEffect == IconEffect.Personalized && current is not null
                 ? _settings.GetIconKind(current) : DeviceIconKind.Unknown;
-            var iconKey = (current?.BatteryPercent, _settings.IconEffect, kind);
+            // 修改颜色边界也会使缓存失效，即使设备电量没有变化。
+            var iconKey = (current?.BatteryPercent, _settings.IconEffect, kind, _settings.RedBatteryThreshold, _settings.YellowBatteryThreshold);
             if (_currentIcon is not null && _currentIconKey == iconKey)
             {
                 if (_notifyIcon.Text != tooltip) _notifyIcon.Text = tooltip;
                 return;
             }
             // 外观独立于设备选择策略，轮播时图形随当前设备一起切换。
-            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect, kind, _showBattery);
+            candidate = BatteryIcon.Create(current?.BatteryPercent, _settings.IconEffect, kind, _showBattery,
+                _settings.RedBatteryThreshold, _settings.YellowBatteryThreshold);
             if (_exiting) return;
 
             var previousIcon = _currentIcon;
@@ -243,6 +247,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _menu.Items.Add(monitored);
         _menu.Items.Add(primary);
         _menu.Items.Add(BuildDeviceIconMenu());
+        var lowBattery = new ToolStripMenuItem($"低电量提醒（≤{_settings.LowBatteryThreshold}%）…");
+        lowBattery.Click += (_, _) => ConfigureLowBatteryThreshold();
+        _menu.Items.Add(lowBattery);
+        var colors = new ToolStripMenuItem("电量颜色阈值…");
+        colors.Click += (_, _) => ConfigureBatteryColors();
+        _menu.Items.Add(colors);
         _menu.Items.Add(new ToolStripSeparator());
 
         var startup = new ToolStripMenuItem("开机自动启动")
@@ -311,6 +321,91 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _settingsDirty = !_settingsStore.Save(_settings);
         UpdatePresentation();
+        ShowLowBatteryNotification();
+    }
+
+    // 使用托盘的系统通知入口，多台设备同时不足时合并，避免通知互相覆盖。
+    private void ShowLowBatteryNotification()
+    {
+        if (_exiting) return;
+        var alerts = _lowBatteryReminder.GetNewAlerts(_devices, _settings);
+        if (alerts.Count == 0) return;
+        var text = string.Join(Environment.NewLine, alerts.Select(device => $"{device.Name}：{device.BatteryPercent}%"));
+        // 系统托盘通知正文最多 255 个字符，预留末尾省略号。
+        if (text.Length > 255) text = text[..254] + "…";
+        try
+        {
+            // 普通电量提醒不使用系统黄色警告标志。
+            _notifyIcon.ShowBalloonTip(10_000, $"蓝牙设备电量低（{alerts.Count} 台）", text, ToolTipIcon.None);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // 系统通知暂不可用时，继续保留设备读取和托盘显示。
+        }
+    }
+
+    // 数值输入支持任意整数百分比，确认后沿用现有设置持久化流程。
+    private void ConfigureLowBatteryThreshold()
+    {
+        using var dialog = new Form
+        {
+            Text = "低电量提醒", ClientSize = new Size(300, 130),
+            FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterScreen,
+            MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false,
+            AutoScaleMode = AutoScaleMode.Dpi
+        };
+        using var label = new Label { Text = "设备电量小于等于此值时提醒（%）：", AutoSize = true, Location = new Point(16, 16) };
+        using var input = new NumericUpDown
+        {
+            Minimum = 1, Maximum = 100, Value = _settings.LowBatteryThreshold,
+            Location = new Point(16, 42), Width = 90
+        };
+        using var ok = new Button { Text = "确定", DialogResult = DialogResult.OK, Location = new Point(124, 88) };
+        using var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Location = new Point(208, 88) };
+        dialog.Controls.AddRange([label, input, ok, cancel]);
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+        _settings.LowBatteryThreshold = (int)input.Value;
+        SaveAndUpdate();
+    }
+
+    // 两个上限联动约束，始终保留红、黄、绿三个有效区间。
+    private void ConfigureBatteryColors()
+    {
+        using var dialog = new Form
+        {
+            Text = "电量颜色阈值", ClientSize = new Size(340, 188),
+            FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterScreen,
+            MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false,
+            AutoScaleMode = AutoScaleMode.Dpi
+        };
+        using var redLabel = new Label { Text = "红色上限（%）：", AutoSize = true, Location = new Point(16, 20) };
+        using var yellowLabel = new Label { Text = "黄色上限（%）：", AutoSize = true, Location = new Point(16, 60) };
+        using var red = new NumericUpDown
+        {
+            Minimum = 0, Maximum = _settings.YellowBatteryThreshold - 1,
+            Value = _settings.RedBatteryThreshold, Location = new Point(180, 16), Width = 100
+        };
+        using var yellow = new NumericUpDown
+        {
+            Minimum = _settings.RedBatteryThreshold + 1, Maximum = 99,
+            Value = _settings.YellowBatteryThreshold, Location = new Point(180, 56), Width = 100
+        };
+        using var ranges = new Label { AutoSize = true, Location = new Point(16, 100) };
+        void UpdateRanges() => ranges.Text = $"红色 ≤{red.Value}%；黄色 ≤{yellow.Value}%；其余绿色";
+        red.ValueChanged += (_, _) => { yellow.Minimum = red.Value + 1; UpdateRanges(); };
+        yellow.ValueChanged += (_, _) => { red.Maximum = yellow.Value - 1; UpdateRanges(); };
+        UpdateRanges();
+        using var ok = new Button { Text = "确定", DialogResult = DialogResult.OK, Location = new Point(164, 144) };
+        using var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Location = new Point(248, 144) };
+        dialog.Controls.AddRange([redLabel, red, yellowLabel, yellow, ranges, ok, cancel]);
+        dialog.AcceptButton = ok;
+        dialog.CancelButton = cancel;
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+        _settings.RedBatteryThreshold = (int)red.Value;
+        _settings.YellowBatteryThreshold = (int)yellow.Value;
+        SaveAndUpdate();
     }
 
     private static string DeviceLabel(BluetoothDeviceSnapshot device)

@@ -17,6 +17,7 @@ if (args is ["--refresh-benchmark"])
 
 DisplayLogicChecks.Run();
 SettingsStoreChecks.Run();
+LowBatteryChecks.Run();
 AppIconChecks.Run();
 LegacyDataCleanupChecks.Run();
 StartupRegistrationChecks.Run();

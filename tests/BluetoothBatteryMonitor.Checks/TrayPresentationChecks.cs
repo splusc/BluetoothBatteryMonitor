@@ -56,6 +56,16 @@ internal static class TrayPresentationChecks
             using var low = notify.Icon!.ToBitmap();
             Check.Equal(Color.Red.ToArgb(), low.GetPixel(25, 2).ToArgb(), "重绘后同步更新阶段颜色");
 
+            settings.RedBatteryThreshold = 10;
+            settings.YellowBatteryThreshold = 15;
+            Update.Invoke(context, null);
+            using (var changed = notify.Icon!.ToBitmap())
+                Check.Equal(Color.LimeGreen.ToArgb(), changed.GetPixel(25, 2).ToArgb(), "电量不变时修改颜色阈值立即重绘");
+            settings.YellowBatteryThreshold = 60;
+            Update.Invoke(context, null);
+            using (var changed = notify.Icon!.ToBitmap())
+                Check.Equal(Color.Gold.ToArgb(), changed.GetPixel(25, 2).ToArgb(), "单独修改黄色上限也会使缓存失效");
+
             var lowIcon = notify.Icon;
             settings.DeviceIcons["mouse"] = DeviceIconKind.Keyboard;
             Update.Invoke(context, null);

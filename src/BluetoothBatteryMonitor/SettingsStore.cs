@@ -36,6 +36,15 @@ internal sealed class SettingsStore
             foreach (var (id, kind) in settings.DeviceIcons ?? []) icons[id] = kind;
             settings.DeviceIcons = icons;
             if (!Enum.IsDefined(settings.IconEffect)) settings.IconEffect = IconEffect.Default;
+            // 手动修改配置产生的越界值回退默认阈值。
+            if (settings.LowBatteryThreshold is < 1 or > 100) settings.LowBatteryThreshold = 20;
+            // 分段必须覆盖三种颜色，非法配置整体回退当前默认值。
+            if (settings.RedBatteryThreshold < 0 || settings.YellowBatteryThreshold > 99
+                || settings.RedBatteryThreshold >= settings.YellowBatteryThreshold)
+            {
+                settings.RedBatteryThreshold = 20;
+                settings.YellowBatteryThreshold = 60;
+            }
             return settings;
         }
         catch (Exception exception) when (

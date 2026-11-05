@@ -71,6 +71,25 @@ internal static class BatteryIconChecks
             Check.Equal(color.ToArgb(), personalBitmap.GetPixel(25, 2).ToArgb(), $"个性化 {percent}% 外框颜色");
             if (percent > 0) Check.Equal(color.ToArgb(), personalBitmap.GetPixel(25, 26).ToArgb(), $"个性化 {percent}% 填充颜色");
         }
+        // 自定义阶段只影响颜色，两种效果在新的相邻边界必须一致。
+        foreach (var (percent, color) in new (byte?, System.Drawing.Color)[]
+        {
+            (0, System.Drawing.Color.Red), (30, System.Drawing.Color.Red),
+            (31, System.Drawing.Color.Gold), (70, System.Drawing.Color.Gold),
+            (71, System.Drawing.Color.LimeGreen), (100, System.Drawing.Color.LimeGreen),
+            (null, System.Drawing.Color.Gray)
+        })
+        {
+            foreach (var effect in Enum.GetValues<IconEffect>())
+            {
+                using var icon = BatteryIcon.Create(percent, effect, redThreshold: 30, yellowThreshold: 70);
+                using var pixels = icon.ToBitmap();
+                if (effect == IconEffect.Personalized)
+                    Check.Equal(color.ToArgb(), pixels.GetPixel(25, 2).ToArgb(), "个性化使用自定义颜色边界");
+                else if (percent.HasValue)
+                    Check.Equal(color.ToArgb(), pixels.GetPixel(6, 12).ToArgb(), "默认电池使用自定义颜色边界");
+            }
+        }
         using var personalUnknown = BatteryIcon.Create(null, IconEffect.Personalized);
         using var unknownBitmap = personalUnknown.ToBitmap();
         Check.Equal(System.Drawing.Color.Gray.ToArgb(), unknownBitmap.GetPixel(25, 2).ToArgb(), "未知电量不标示为高电量绿色");

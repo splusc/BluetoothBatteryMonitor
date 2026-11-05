@@ -8,7 +8,7 @@ internal static class BatteryIcon
 {
     // 默认参数保证原有调用继续绘制当前横向电池。
     public static Icon Create(byte? percent, IconEffect effect = IconEffect.Default, DeviceIconKind kind = DeviceIconKind.Unknown,
-        bool showBattery = true)
+        bool showBattery = true, int redThreshold = 20, int yellowThreshold = 60)
     {
         using var bitmap = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
         // 固定像素画布，不能继承当前显示器的 DPI 后再按图片物理尺寸绘制。
@@ -19,7 +19,7 @@ internal static class BatteryIcon
 
         if (effect == IconEffect.Personalized)
         {
-            DrawPersonalized(graphics, percent, kind, showBattery);
+            DrawPersonalized(graphics, percent, kind, showBattery, redThreshold, yellowThreshold);
         }
         else
         {
@@ -32,7 +32,7 @@ internal static class BatteryIcon
 
             if (percent is byte value)
             {
-                var brush = BatteryBrush(value);
+                var brush = BatteryBrush(value, redThreshold, yellowThreshold);
                 for (var segment = 0; segment < DisplayLogic.BatterySegments(value); segment++)
                     graphics.FillRectangle(brush, 5 + segment * 4, 10, 3, 12);
             }
@@ -55,7 +55,8 @@ internal static class BatteryIcon
     }
 
     // 使用预绘制的透明剪影，竖向电池覆盖图形右侧，匹配预览中的组合比例。
-    internal static void DrawPersonalized(Graphics graphics, byte? percent, DeviceIconKind kind, bool showBattery = true)
+    internal static void DrawPersonalized(Graphics graphics, byte? percent, DeviceIconKind kind, bool showBattery = true,
+        int redThreshold = 20, int yellowThreshold = 60)
     {
         if (!Enum.IsDefined(kind)) kind = DeviceIconKind.Unknown;
         using var stream = typeof(BatteryIcon).Assembly.GetManifestResourceStream($"BluetoothBatteryMonitor.Assets.DeviceIcons.{kind}.png")
@@ -70,7 +71,7 @@ internal static class BatteryIcon
         // 不让设备图形透进电池空槽；外框与填充使用和默认样式相同的阶段颜色。
         // 32×33%=10.56，取整为 11 像素；右边缘保持贴齐。
         graphics.FillRectangle(Brushes.Black, 21, 4, 11, 26);
-        var brush = BatteryBrush(percent);
+        var brush = BatteryBrush(percent, redThreshold, yellowThreshold);
         using var border = new Pen(brush, 2);
         graphics.DrawRectangle(border, 22, 5, 9, 24);
         graphics.FillRectangle(brush, 24, 2, 5, 3);
@@ -88,11 +89,11 @@ internal static class BatteryIcon
     }
 
     // 两种效果共用阈值；未知电量以灰色表示，不能冒充高电量。
-    private static Brush BatteryBrush(byte? percent) => percent switch
+    private static Brush BatteryBrush(byte? percent, int redThreshold, int yellowThreshold) => percent switch
     {
         null => Brushes.Gray,
-        <= 20 => Brushes.Red,
-        <= 60 => Brushes.Gold,
+        byte value when value <= redThreshold => Brushes.Red,
+        byte value when value <= yellowThreshold => Brushes.Gold,
         _ => Brushes.LimeGreen
     };
 

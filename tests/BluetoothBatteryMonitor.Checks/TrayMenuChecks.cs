@@ -46,7 +46,7 @@ internal static class TrayMenuChecks
         build.Invoke(context, null);
         using (var first = new NativePopupMenu(menu.Items))
         {
-            Check.Equal(9, GetMenuItemCount(first.Handle), "首次打开前已生成全部系统菜单项");
+            Check.Equal(11, GetMenuItemCount(first.Handle), "首次打开前已生成全部系统菜单项");
             Check.Equal(1, GetMenuItemCount(GetSubMenu(first.Handle, 2)), "首次无设备时保留占位项");
         }
         Set(context, "_devices", new[]
@@ -56,7 +56,7 @@ internal static class TrayMenuChecks
         });
         build.Invoke(context, null);
         using var next = new NativePopupMenu(menu.Items);
-        Check.Equal(9, GetMenuItemCount(next.Handle), "后续打开不重复累加菜单项");
+        Check.Equal(11, GetMenuItemCount(next.Handle), "后续打开不重复累加菜单项");
         Check.Equal(2, GetMenuItemCount(GetSubMenu(next.Handle, 2)), "更新监控设备列表");
         Check.Equal(2, GetMenuItemCount(GetSubMenu(next.Handle, 4)), "更新手动设备图标列表");
         Check.Equal(false, menu.IsHandleCreated, "菜单数据更新不创建 WinForms 弹窗");
