@@ -4,6 +4,8 @@
 
 `Keyboard.png`、`Mouse.png`、`Headphones.png`、`Unknown.png` 分别派生自 Lucide 的 keyboard、mouse、headphones、bluetooth 图形，许可证见 `LICENSE.txt`。
 
+程序文件图标 `../BluetoothBatteryMonitor.ico` 使用同一蓝牙剪影的白色版本，搭配白色空心电池轮廓，电池内部和背景透明，包含 16、24、32、48、64、128、256 像素图像。电池边框与蓝牙标志采用接近的线宽，32 像素画布上约为 2.5 像素，并按各尺寸的像素网格取整。蓝牙部分沿用 Lucide 许可，电池由程序绘制。
+
 PS4 外轮廓参考 [GamepadViewer PS4 图形](https://gamepadviewer.com/ps4-assets/base.svg)，PS5 轮廓依据用户提供的 DualSense 正面参考绘制。电池由程序绘制，不包含在图片中。
 
 所有 PNG 都是透明背景白色图形，作为嵌入资源随单文件 EXE 发布；替换图片时需保留相应文件名。
