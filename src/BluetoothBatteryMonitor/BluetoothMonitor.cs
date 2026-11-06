@@ -10,6 +10,8 @@ internal sealed class BluetoothMonitor
 {
     private const string ConnectedProperty = "System.Devices.Aep.IsConnected";
     private const string BatteryProperty = "System.Devices.BatteryLife";
+    private const string NodeBatteryProperty = "{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2"; // Windows 蓝牙驱动记录的耳机电量。
+    private const string NodeContainerProperty = "System.Devices.ContainerId"; // PnP 子节点使用的设备容器属性。
     // 设备容器用于关联 HID 硬件标识，避免把同名的 PS4、PS5 混为一类。
     private const string ContainerProperty = "System.Devices.Aep.ContainerId";
     // 经典蓝牙的外设类别可识别没有明确类型名称的键盘、鼠标和耳机。
@@ -19,6 +21,16 @@ internal sealed class BluetoothMonitor
     private static readonly string[] RequestedProperties =
         [ConnectedProperty, BatteryProperty, ContainerProperty, MajorClassProperty, MinorClassProperty, AppearanceProperty];
     private static readonly TimeSpan GattTimeout = TimeSpan.FromSeconds(4);
+
+    // 连接状态看配对端点，HFP 电量变化看蓝牙 PnP 子节点，不依赖固定轮询周期。
+    public static DeviceWatcher[] CreateWatchers() =>
+    [
+        DeviceInformation.CreateWatcher(
+            $"({BluetoothDevice.GetDeviceSelectorFromPairingState(true)}) OR ({BluetoothLEDevice.GetDeviceSelectorFromPairingState(true)})",
+            RequestedProperties, DeviceInformationKind.AssociationEndpoint),
+        DeviceInformation.CreateWatcher("System.Devices.DeviceInstanceId:~<\"BTH\"",
+            [NodeBatteryProperty, NodeContainerProperty], DeviceInformationKind.Device)
+    ];
 
     public async Task<IReadOnlyList<BluetoothDeviceSnapshot>> GetDevicesAsync()
     {
@@ -36,10 +48,11 @@ internal sealed class BluetoothMonitor
         var hardwareByContainer = classic.Count + lowEnergy.Count > 0
             ? await GetHardwareByContainerAsync()
             : new Dictionary<Guid, List<string>>();
+        var batteryByContainer = await GetBatteryByContainerAsync(classic.Concat(lowEnergy));
 
         var snapshots = classic
             .Concat(lowEnergy)
-            .Select(device => Map(device, hardwareByContainer))
+            .Select(device => Map(device, hardwareByContainer, batteryByContainer))
             .GroupBy(device => device.Id, StringComparer.OrdinalIgnoreCase)
             .Select(group => group
                 .OrderByDescending(device => device.IsConnected)
@@ -49,9 +62,7 @@ internal sealed class BluetoothMonitor
             .OrderBy(device => device.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
 
-        // Enrich BLE devices with battery level via GATT Battery Service.
-        // System.Devices.BatteryLife is not populated for Bluetooth devices;
-        // battery data lives in the GATT Battery Service (0x180F) on the device.
+        // Windows 未提供电量时，再尝试 BLE 标准电量服务。
         var gattTargets = snapshots
             .Where(s => s.IsConnected && !s.BatteryPercent.HasValue && leDeviceIds.Contains(s.Id))
             .ToArray();
@@ -91,7 +102,12 @@ internal sealed class BluetoothMonitor
                 snapshots = snapshots.Select(s => s.Id == target.Id ? s with { BatteryPercent = battery } : s).ToArray();
         }
 
-        return snapshots;
+        var containers = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        foreach (var endpoint in classic.Concat(lowEnergy))
+            if (endpoint.Properties.TryGetValue(ContainerProperty, out var value)
+                && Guid.TryParse(value?.ToString(), out var container) && container != Guid.Empty)
+                containers[endpoint.Id] = container;
+        return MergeDeviceSnapshots(snapshots, containers);
     }
 
     internal static byte? NormalizeBattery(object? value)
@@ -106,6 +122,69 @@ internal sealed class BluetoothMonitor
         {
             return null;
         }
+    }
+
+    // 聚合同一设备的多个蓝牙端点，保留独立容器的同名设备。
+    internal static IReadOnlyList<BluetoothDeviceSnapshot> MergeDeviceSnapshots(
+        IReadOnlyList<BluetoothDeviceSnapshot> devices, IReadOnlyDictionary<string, Guid> containers) => devices
+        .GroupBy(device => containers.TryGetValue(device.Id, out var container) && container != Guid.Empty
+            ? $"container:{container:D}" : device.Id, StringComparer.OrdinalIgnoreCase)
+        .Select(group =>
+        {
+            var representative = group.OrderByDescending(device => device.IsConnected).First();
+            var battery = group.Where(device => device.BatteryPercent.HasValue)
+                .OrderByDescending(device => device.IsConnected).ThenBy(device => device.BatteryPercent).FirstOrDefault();
+            var icon = group.OrderByDescending(device => device.IconKind is not DeviceIconKind.Unknown and not DeviceIconKind.Gamepad)
+                .ThenByDescending(device => device.IconKind != DeviceIconKind.Unknown).First().IconKind;
+            return representative with
+            {
+                Id = group.Key,
+                BatteryPercent = battery?.BatteryPercent,
+                IconKind = icon,
+                EndpointIds = group.Select(device => device.Id).ToArray()
+            };
+        })
+        .OrderBy(device => device.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+
+    // 先保留端点已有电量，再按容器关联子节点，不能按名称借用其他设备的电量。
+    internal static byte? ResolveBattery(IReadOnlyDictionary<string, object> properties,
+        IReadOnlyDictionary<Guid, byte> batteryByContainer)
+    {
+        properties.TryGetValue(BatteryProperty, out var value);
+        if (NormalizeBattery(value) is byte battery) return battery;
+        properties.TryGetValue(ContainerProperty, out var containerValue);
+        return Guid.TryParse(containerValue?.ToString(), out var container) && container != Guid.Empty
+            && batteryByContainer.TryGetValue(container, out var fallback) ? fallback : null;
+    }
+
+    // HFP 耳机的电量可能仅存在于 Hands-Free 子节点，BLE 服务并非唯一来源。
+    private static async Task<Dictionary<Guid, byte>> GetBatteryByContainerAsync(IEnumerable<DeviceInformation> endpoints)
+    {
+        var result = new Dictionary<Guid, byte>();
+        var containers = endpoints.Select(device =>
+            device.Properties.TryGetValue(ContainerProperty, out var value)
+                && Guid.TryParse(value?.ToString(), out var container) ? container : Guid.Empty)
+            .Where(container => container != Guid.Empty).Distinct().ToArray();
+        if (containers.Length == 0) return result;
+        try
+        {
+            var selector = string.Join(" OR ", containers.Select(container => $"{NodeContainerProperty}:=\"{{{container}}}\""));
+            var nodes = await DeviceInformation.FindAllAsync(selector,
+                [NodeContainerProperty, NodeBatteryProperty], DeviceInformationKind.Device).AsTask().WaitAsync(GattTimeout);
+            foreach (var node in nodes)
+            {
+                if (!node.Properties.TryGetValue(NodeContainerProperty, out var value)
+                    || !Guid.TryParse(value?.ToString(), out var container) || container == Guid.Empty
+                    || !node.Properties.TryGetValue(NodeBatteryProperty, out var batteryValue)
+                    || NormalizeBattery(batteryValue) is not byte battery) continue;
+                result[container] = battery;
+            }
+        }
+        catch
+        {
+            // 系统属性查询失败时仍保留原有 BLE 和手柄读取途径。
+        }
+        return result;
     }
 
     /// <summary>
@@ -200,11 +279,11 @@ internal sealed class BluetoothMonitor
     }
 
     // 将设备名称、经典蓝牙类别、BLE 外观及同容器的硬件标识统一交给图形分类逻辑。
-    private static BluetoothDeviceSnapshot Map(DeviceInformation device, IReadOnlyDictionary<Guid, List<string>> hardwareByContainer)
+    private static BluetoothDeviceSnapshot Map(DeviceInformation device, IReadOnlyDictionary<Guid, List<string>> hardwareByContainer,
+        IReadOnlyDictionary<Guid, byte> batteryByContainer)
     {
         var connected = device.Properties.TryGetValue(ConnectedProperty, out var connectedValue)
             && connectedValue is true;
-        device.Properties.TryGetValue(BatteryProperty, out var batteryValue);
         device.Properties.TryGetValue(ContainerProperty, out var containerValue);
         var hardwareId = device.Id;
         if (Guid.TryParse(containerValue?.ToString(), out var container)
@@ -219,7 +298,7 @@ internal sealed class BluetoothMonitor
             device.Id,
             string.IsNullOrWhiteSpace(device.Name) ? "Bluetooth device" : device.Name,
             connected,
-            NormalizeBattery(batteryValue),
+            ResolveBattery(device.Properties, batteryByContainer),
             DeviceIconClassifier.Classify(device.Name, hardwareId, majorClass, minorClass, appearance));
     }
 }

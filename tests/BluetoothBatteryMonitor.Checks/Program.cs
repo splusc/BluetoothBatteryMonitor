@@ -25,6 +25,7 @@ BluetoothMonitorChecks.Run();
 DeviceIconChecks.Run();
 BatteryIconChecks.Run();
 TrayPresentationChecks.Run();
+TrayTooltipChecks.Run();
 TrayMenuChecks.Run();
 NativePopupMenuChecks.Run();
 Console.WriteLine("All checks passed.");

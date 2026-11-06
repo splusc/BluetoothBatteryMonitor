@@ -1,3 +1,5 @@
+using Windows.Devices.Enumeration;
+
 namespace BluetoothBatteryMonitor;
 
 internal sealed class TrayApplicationContext : ApplicationContext
@@ -11,8 +13,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ContextMenuStrip _menu = new();
     private readonly NativeTrayMenu _nativeMenu = new(); // 只由系统原生菜单负责显示和键盘导航。
     private readonly NotifyIcon _notifyIcon;
+    private readonly TrayTooltip _tooltip = new(); // 独立悬停窗口保留全部监控设备，不受托盘文字长度限制。
     private readonly System.Windows.Forms.Timer _refreshTimer = new() { Interval = 60_000 };
     private readonly System.Windows.Forms.Timer _cycleTimer = new() { Interval = 5_000 };
+    private readonly System.Windows.Forms.Timer _deviceChangeTimer = new() { Interval = 500 }; // 合并短时间内的系统设备事件。
+    private readonly List<DeviceWatcher> _deviceWatchers = []; // 退出时停止系统监听，避免继续回调已释放的界面。
     private IReadOnlyList<BluetoothDeviceSnapshot> _devices = [];
     private Icon? _currentIcon;
     // 只记住当前图标的输入，避免未变化的刷新重复解码 PNG 和分配原生图形资源。
@@ -33,24 +38,76 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _notifyIcon = new NotifyIcon
         {
             Icon = _currentIcon,
-            Text = _emptyStatus,
+            Text = string.Empty, // 禁用系统自带提示，避免与完整列表重叠。
             Visible = true
         };
         _notifyIcon.MouseUp += ShowMenu;
+        _notifyIcon.MouseMove += (_, _) =>
+        {
+            if (!_exiting && !_menuOpen) _tooltip.ShowAt(Cursor.Position);
+        };
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
         _cycleTimer.Tick += (_, _) => AdvanceCycle();
+        _deviceChangeTimer.Tick += async (_, _) =>
+        {
+            if (_refreshing) return;
+            _deviceChangeTimer.Stop();
+            await RefreshAsync();
+        };
         _refreshTimer.Start();
         _cycleTimer.Start();
+        StartDeviceWatchers();
         _ = RefreshAsync();
+    }
+
+    // WinRT 在后台线程回调；统一投递到界面线程，并合并同一次连接引起的多个节点变化。
+    private void StartDeviceWatchers()
+    {
+        _ = _tooltip.Handle;
+        try
+        {
+            foreach (var watcher in BluetoothMonitor.CreateWatchers())
+            {
+                void Changed()
+                {
+                    if (_exiting || watcher.Status != DeviceWatcherStatus.EnumerationCompleted) return;
+                    try
+                    {
+                        _tooltip.BeginInvoke((Action)(() => { if (!_exiting) _deviceChangeTimer.Start(); }));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // 退出期间窗口可能已释放，不再安排刷新。
+                    }
+                }
+                watcher.Added += (_, _) => Changed();
+                watcher.Updated += (_, _) => Changed();
+                watcher.Removed += (_, _) => Changed();
+                watcher.EnumerationCompleted += (_, _) => Changed();
+                _deviceWatchers.Add(watcher);
+                watcher.Start();
+            }
+        }
+        catch
+        {
+            // 驱动不支持监听时仍保留每分钟刷新。
+        }
     }
 
     private async Task RefreshAsync()
     {
-        if (_refreshing || _exiting) return;
+        if (_exiting) return;
+        if (_refreshing)
+        {
+            _deviceChangeTimer.Start();
+            return;
+        }
+        _deviceChangeTimer.Stop();
         _refreshing = true;
         try
         {
             _devices = await _monitor.GetDevicesAsync();
+            if (_settings.MergeDeviceIds(_devices)) _settingsDirty = true;
             _emptyStatus = _devices.Count == 0 ? "未发现已配对蓝牙设备" : "没有可显示的设备";
 
             if (!_settings.Initialized)
@@ -101,7 +158,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var monitored = _devices
                 .Where(device => _settings.MonitoredDeviceIds.Contains(device.Id))
                 .ToArray();
-            var tooltip = DisplayLogic.BuildTooltip(monitored, current, _emptyStatus);
+            var tooltip = DisplayLogic.BuildTooltip(monitored, _emptyStatus);
+            _tooltip.Content = tooltip;
             // 默认样式不依赖设备类型；轮播到相同电量的设备时只需更新提示文字。
             var kind = _settings.IconEffect == IconEffect.Personalized && current is not null
                 ? _settings.GetIconKind(current) : DeviceIconKind.Unknown;
@@ -109,7 +167,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var iconKey = (current?.BatteryPercent, _settings.IconEffect, kind, _settings.RedBatteryThreshold, _settings.YellowBatteryThreshold);
             if (_currentIcon is not null && _currentIconKey == iconKey)
             {
-                if (_notifyIcon.Text != tooltip) _notifyIcon.Text = tooltip;
                 return;
             }
             // 外观独立于设备选择策略，轮播时图形随当前设备一起切换。
@@ -118,8 +175,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (_exiting) return;
 
             var previousIcon = _currentIcon;
-            var previousTooltip = _notifyIcon.Text;
-            _notifyIcon.Text = tooltip;
             try
             {
                 _notifyIcon.Icon = candidate;
@@ -133,14 +188,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 catch
                 {
                 }
-                try
-                {
-                    _notifyIcon.Text = previousTooltip;
-                }
-                catch
-                {
-                }
-
                 if (ReferenceEquals(_notifyIcon.Icon, candidate))
                 {
                     _currentIcon = candidate;
@@ -169,6 +216,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void ShowMenu(object? sender, MouseEventArgs eventArgs)
     {
         if (_exiting || _menuOpen || eventArgs.Button != MouseButtons.Right) return;
+        _tooltip.Dismiss();
         _menuOpen = true;
         try
         {
@@ -421,10 +469,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _exiting = true;
         _refreshTimer.Stop();
         _cycleTimer.Stop();
+        _deviceChangeTimer.Stop();
+        foreach (var watcher in _deviceWatchers)
+            if (watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted) watcher.Stop();
         _refreshTimer.Dispose();
         _cycleTimer.Dispose();
+        _deviceChangeTimer.Dispose();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _tooltip.Dispose();
         var currentIcon = _currentIcon;
         _currentIcon = null;
         currentIcon?.Dispose();

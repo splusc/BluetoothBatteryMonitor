@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace BluetoothBatteryMonitor;
 
 internal enum DisplayMode
@@ -15,7 +13,9 @@ internal sealed record BluetoothDeviceSnapshot(
     bool IsConnected,
     byte? BatteryPercent,
     // 自动识别的设备图形；旧调用方默认为未知设备。
-    DeviceIconKind IconKind = DeviceIconKind.Unknown);
+    DeviceIconKind IconKind = DeviceIconKind.Unknown,
+    // 同一物理设备的旧端点 ID，仅用于兼容已保存的监控、主设备和图标选择。
+    IReadOnlyList<string>? EndpointIds = null);
 
 internal sealed class AppSettings
 {
@@ -37,12 +37,47 @@ internal sealed class AppSettings
     // 未知枚举值不能阻止托盘刷新，回退到设备的自动识别结果。
     public DeviceIconKind GetIconKind(BluetoothDeviceSnapshot device) =>
         DeviceIcons.TryGetValue(device.Id, out var kind) && Enum.IsDefined(kind) ? kind : device.IconKind;
+
+    // 端点合并后迁移旧设置，避免已监控的 BLE 端点消失或重复显示。
+    public bool MergeDeviceIds(IReadOnlyList<BluetoothDeviceSnapshot> devices)
+    {
+        var changed = false;
+        foreach (var device in devices)
+        {
+            // 两个旧端点曾指定不同图标时，优先延续原主设备的选择；新的容器配置优先级最高。
+            if (!DeviceIcons.ContainsKey(device.Id) && PrimaryDeviceId is not null
+                && (device.EndpointIds?.Contains(PrimaryDeviceId, StringComparer.OrdinalIgnoreCase) ?? false)
+                && DeviceIcons.TryGetValue(PrimaryDeviceId, out var primaryIcon))
+            {
+                DeviceIcons[device.Id] = primaryIcon;
+                changed = true;
+            }
+            foreach (var endpointId in device.EndpointIds ?? [])
+            {
+                if (string.Equals(endpointId, device.Id, StringComparison.OrdinalIgnoreCase)) continue;
+                if (MonitoredDeviceIds.Remove(endpointId))
+                {
+                    MonitoredDeviceIds.Add(device.Id);
+                    changed = true;
+                }
+                if (string.Equals(PrimaryDeviceId, endpointId, StringComparison.OrdinalIgnoreCase))
+                {
+                    PrimaryDeviceId = device.Id;
+                    changed = true;
+                }
+                if (DeviceIcons.Remove(endpointId, out var icon))
+                {
+                    DeviceIcons.TryAdd(device.Id, icon);
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
 }
 
 internal static class DisplayLogic
 {
-    private const int TooltipLimit = 63;
-
     public static BluetoothDeviceSnapshot? SelectDevice(
         IReadOnlyList<BluetoothDeviceSnapshot> devices,
         AppSettings settings,
@@ -78,41 +113,25 @@ internal static class DisplayLogic
 
     public static string BuildTooltip(
         IReadOnlyList<BluetoothDeviceSnapshot> devices,
-        BluetoothDeviceSnapshot? current,
         string emptyStatus)
     {
-        if (devices.Count == 0) return Clip(emptyStatus, TooltipLimit);
+        if (devices.Count == 0) return emptyStatus;
 
-        var ordered = current is null
-            ? devices
-            : new[] { current }.Concat(devices.Where(device => device.Id != current.Id)).ToArray();
-        var text = new StringBuilder();
-
-        foreach (var device in ordered)
-        {
-            var entry = FormatDevice(device, TooltipLimit);
-            var separatorLength = text.Length == 0 ? 0 : Environment.NewLine.Length;
-            if (text.Length + separatorLength + entry.Length > TooltipLimit) break;
-            if (separatorLength > 0) text.AppendLine();
-            text.Append(entry);
-        }
-
-        return text.Length == 0 ? Clip(emptyStatus, TooltipLimit) : text.ToString();
+        // 提示列表独立于图标轮播；未知电量和断连置后，同电量按名称、ID 固定顺序。
+        var ordered = devices
+            .OrderBy(device => device.IsConnected ? device.BatteryPercent ?? int.MaxValue : int.MaxValue)
+            .ThenByDescending(device => device.IsConnected)
+            .ThenBy(device => device.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(device => device.Id, StringComparer.OrdinalIgnoreCase);
+        // 完整文字交给可滚动悬停窗口，不能按系统托盘提示的字符上限丢弃设备。
+        return string.Join(Environment.NewLine, ordered.Select(FormatDevice));
     }
 
-    private static string FormatDevice(BluetoothDeviceSnapshot device, int limit)
+    private static string FormatDevice(BluetoothDeviceSnapshot device)
     {
         var suffix = !device.IsConnected
             ? "未连接"
             : device.BatteryPercent is byte percent ? $"{percent}%" : "电量未知";
-        var maxNameLength = Math.Max(1, limit - suffix.Length - 1);
-        var name = device.Name.Length <= maxNameLength
-            ? device.Name
-            : Clip(device.Name, maxNameLength);
-        return $"{name} {suffix}";
+        return $"{device.Name} {suffix}";
     }
-
-    private static string Clip(string value, int limit) => value.Length <= limit
-        ? value
-        : limit <= 1 ? value[..limit] : $"{value[..(limit - 1)]}…";
 }

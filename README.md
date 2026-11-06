@@ -4,7 +4,7 @@ Windows 11 tray application “蓝牙电量监视器” that displays Bluetooth-
 
 ## Usage
 
-- Hover over the tray icon to see available battery status for monitored devices.
+- 鼠标悬停在托盘图标上可查看全部监控设备的电量，按电量从低到高排序，同电量按名称排列，未知电量和未连接设备放在后面；顺序不随图标轮播改变。长名称自动换行，设备较多时可将鼠标移入列表滚动查看。
 - Right-click the icon to choose `主设备` (Primary), `最低电量` (Lowest), or `轮播` (Cycle) mode.
 - Use `监控设备` (Monitor Devices) and `主设备` (Primary Device) to configure what the icon represents.
 - `电量显示效果` 可选择 `默认` 或 `个性化图标`。首次使用和旧设置默认保留原有横向彩色电池；个性化效果为白色设备图形搭配竖向电池，不改变主设备、最低电量和轮播模式。两种效果默认的电量颜色均为 ≤20% 红色、21%～60% 黄色、>60% 绿色，可通过 `电量颜色阈值…` 调整；个性化电池外框同步变色，未知电量显示灰色问号。
@@ -22,6 +22,10 @@ Windows 11 tray application “蓝牙电量监视器” that displays Bluetooth-
 个性化图标使用明确的源／目标像素矩形绘制，避免 Windows 高 DPI 缩放把基础图形放大后裁切。视觉验收时可用 `BluetoothBatteryMonitor.exe --base-icon` 先只显示设备图形；正常启动仍显示右侧电池，参数不修改保存的设置。
 
 BluetoothBatteryMonitor reads battery information exposed by Windows and the BLE Battery Service. Sony DualShock 4（VID 054C，PID 05C4／09CC）另通过同设备容器的蓝牙 HID 完整输入报告读取电量，采用 DS4Windows 的换算方式：未充电按 8 档、充电按 11 档满量程计算，整数取整并限制为 100%（例如未充电档位 7 显示 87%）。手柄只上报电量档位，百分比为估算值；充电错误或保留值显示未知。手柄被 DS4Windows 独占或被 HidHide 隐藏时可能无法读取；不会发送灯光或震动输出。其他尚未支持的专用协议显示电量未知。最低电量模式优先选择已知电量；全部未知时仍显示已连接设备的图标。
+
+程序同时读取同一设备容器内的 Windows 蓝牙驱动电量属性，因此可识别仅在 Hands-Free 子节点上报告电量的耳机（包括已实测的 Bose QC 消噪耳塞 Ultra），无需耳机提供 BLE 电量服务。连接状态和系统电量属性变化会触发刷新，连续事件合并约 500 毫秒后读取；每分钟轮询作为兜底。显示的是 Windows 驱动提供的单一电量值，不拆分左右耳和充电盒；驱动尚未上报时仍显示未知。
+
+同一设备容器内的经典蓝牙／BLE 记录合并为一台物理设备，连接状态、电量、图标与旧监控选择统一处理。Bose 的这两个端点不代表左右耳；目前没有可靠的左右耳独立电量标识，因此只显示 Windows 提供的一个电量值，不猜测左右耳。
 
 ## Build
 
