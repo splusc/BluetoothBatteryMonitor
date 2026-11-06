@@ -31,7 +31,7 @@ internal static class BluetoothMonitorChecks
         // 两条 Bose 记录是协议端点，不能冒充左右耳；相同名称但不同容器必须保留。
         var endpoints = new[]
         {
-            new BluetoothDeviceSnapshot("classic", "Bose QC 消噪耳塞 Ultra", false, 90, DeviceIconKind.Headphones),
+            new BluetoothDeviceSnapshot("classic", "Bose QC 消噪耳塞 Ultra", true, 90, DeviceIconKind.Headphones),
             new BluetoothDeviceSnapshot("ble", "Bose QC 消噪耳塞 Ultra", true, 90),
             new BluetoothDeviceSnapshot("another", "Bose QC 消噪耳塞 Ultra", true, 60, DeviceIconKind.Headphones),
             new BluetoothDeviceSnapshot("no-container", "其他设备", true, 50)
@@ -40,7 +40,8 @@ internal static class BluetoothMonitorChecks
         {
             ["classic"] = container, ["ble"] = container, ["another"] = otherContainer
         };
-        var merged = BluetoothMonitor.MergeDeviceSnapshots(endpoints, containers);
+        var classicDeviceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "classic", "another" };
+        var merged = BluetoothMonitor.MergeDeviceSnapshots(endpoints, containers, classicDeviceIds);
         Check.Equal(3, merged.Count, "同容器经典蓝牙与 BLE 合并为一副耳机");
         var bose = merged.Single(device => device.BatteryPercent == 90);
         Check.True(bose.IsConnected, "任一端点已连接即显示已连接");
@@ -66,6 +67,25 @@ internal static class BluetoothMonitorChecks
             "轮播只经过两台不同物理设备，不重复经过双端点");
         settings.LowBatteryThreshold = 95;
         Check.Equal(2, new LowBatteryReminder().GetNewAlerts(merged, settings).Count, "低电量提醒不重复报告耳机端点");
+
+        // 入盒后经典音频链路已断开，即使辅助 BLE 仍在线，也不能继续显示耳机已连接。
+        var audioContainers = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["classic"] = container, ["ble"] = container
+        };
+        var audioEndpoints = endpoints.Take(2).Select(device => device with { IsConnected = device.Id == "ble" }).ToArray();
+        var boxed = BluetoothMonitor.MergeDeviceSnapshots(audioEndpoints, audioContainers, classicDeviceIds).Single();
+        Check.True(!boxed.IsConnected, "经典音频已断开时辅助 BLE 连接不能冒充耳机在线");
+        Check.True(DisplayLogic.SelectDevice([boxed], settings, 0) is null, "入盒耳机不再参与图标选择");
+        Check.Equal(0, new LowBatteryReminder().GetNewAlerts([boxed], settings).Count, "入盒耳机不发送旧电量提醒");
+        var activeAudio = audioEndpoints.Select(device => device with { IsConnected = device.Id == "classic" }).ToArray();
+        Check.True(BluetoothMonitor.MergeDeviceSnapshots(activeAudio, audioContainers, classicDeviceIds).Single().IsConnected,
+            "经典音频连接时辅助 BLE 断开不影响耳机在线");
+        Check.True(BluetoothMonitor.MergeDeviceSnapshots([audioEndpoints[1]], audioContainers, classicDeviceIds).Single().IsConnected,
+            "没有经典端点的纯 BLE 设备仍按 BLE 链路判断");
+        var keyboardEndpoints = audioEndpoints.Select(device => device with { IconKind = DeviceIconKind.Keyboard }).ToArray();
+        Check.True(BluetoothMonitor.MergeDeviceSnapshots(keyboardEndpoints, audioContainers, classicDeviceIds).Single().IsConnected,
+            "非音频设备继续支持经典与 BLE 任一链路在线");
 
         var report = new byte[78];
         report[0] = 0x11;

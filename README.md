@@ -27,6 +27,8 @@ BluetoothBatteryMonitor reads battery information exposed by Windows and the BLE
 
 同一设备容器内的经典蓝牙／BLE 记录合并为一台物理设备，连接状态、电量、图标与旧监控选择统一处理。Bose 的这两个端点不代表左右耳；目前没有可靠的左右耳独立电量标识，因此只显示 Windows 提供的一个电量值，不猜测左右耳。
 
+同时存在经典音频和辅助 BLE 端点的耳机，以经典音频端点判断连接状态，避免耳机入盒后仅 BLE 保持连接仍显示在线。纯 BLE 和非音频设备保留任一链路连接即在线的规则。Bose 电量仍依赖系统驱动最近的上报；若耳机没有及时报告，刷新可能继续读到旧值，不能视为实时测量。尚未接入 Bose 专用电量协议。
+
 ## Build
 
 Requires the .NET 10 SDK on Windows 11.

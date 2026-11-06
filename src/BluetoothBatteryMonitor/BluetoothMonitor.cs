@@ -107,7 +107,7 @@ internal sealed class BluetoothMonitor
             if (endpoint.Properties.TryGetValue(ContainerProperty, out var value)
                 && Guid.TryParse(value?.ToString(), out var container) && container != Guid.Empty)
                 containers[endpoint.Id] = container;
-        return MergeDeviceSnapshots(snapshots, containers);
+        return MergeDeviceSnapshots(snapshots, containers, classic.Select(device => device.Id).ToHashSet(StringComparer.OrdinalIgnoreCase));
     }
 
     internal static byte? NormalizeBattery(object? value)
@@ -126,7 +126,8 @@ internal sealed class BluetoothMonitor
 
     // 聚合同一设备的多个蓝牙端点，保留独立容器的同名设备。
     internal static IReadOnlyList<BluetoothDeviceSnapshot> MergeDeviceSnapshots(
-        IReadOnlyList<BluetoothDeviceSnapshot> devices, IReadOnlyDictionary<string, Guid> containers) => devices
+        IReadOnlyList<BluetoothDeviceSnapshot> devices, IReadOnlyDictionary<string, Guid> containers,
+        IReadOnlySet<string> classicDeviceIds) => devices
         .GroupBy(device => containers.TryGetValue(device.Id, out var container) && container != Guid.Empty
             ? $"container:{container:D}" : device.Id, StringComparer.OrdinalIgnoreCase)
         .Select(group =>
@@ -136,9 +137,13 @@ internal sealed class BluetoothMonitor
                 .OrderByDescending(device => device.IsConnected).ThenBy(device => device.BatteryPercent).FirstOrDefault();
             var icon = group.OrderByDescending(device => device.IconKind is not DeviceIconKind.Unknown and not DeviceIconKind.Gamepad)
                 .ThenByDescending(device => device.IconKind != DeviceIconKind.Unknown).First().IconKind;
+            // 有经典音频端点的耳机按该链路判断在线，辅助 BLE 在线不等于耳机音频已连接。
+            var audioEndpoints = group.Where(device => classicDeviceIds.Contains(device.Id)
+                && device.IconKind == DeviceIconKind.Headphones).ToArray();
             return representative with
             {
                 Id = group.Key,
+                IsConnected = audioEndpoints.Length > 0 ? audioEndpoints.Any(device => device.IsConnected) : group.Any(device => device.IsConnected),
                 BatteryPercent = battery?.BatteryPercent,
                 IconKind = icon,
                 EndpointIds = group.Select(device => device.Id).ToArray()

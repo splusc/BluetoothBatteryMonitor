@@ -42,6 +42,8 @@ The solution has no `.sln` file. Projects are referenced directly via `<ProjectR
 
 `BluetoothMonitor.MergeDeviceSnapshots` 在读取结束后按有效容器 GUID 合并经典／BLE 端点，使用稳定的 `container:<guid>` 设备 ID；无容器信息时保留独立设备，不按名称合并。旧端点 ID 保存在快照的 `EndpointIds`，`AppSettings.MergeDeviceIds` 在刷新后迁移监控列表、主设备和手动图标，并按原保存失败重试流程持久化。Bose 不提供左右耳标识时只显示一个系统电量，不能把协议端点标记成左右耳。
 
+合并时传入实际经典蓝牙端点 ID 集合；具有经典耳机端点的设备仅按经典音频链路判断连接，辅助 BLE 在线不能冒充音频在线。纯 BLE 与非音频设备仍允许任一链路在线。Bose 的系统电量可能滞后，已观察到重连前后从 70% 更新为 50%；未接入其专用协议，不保证电量为实时读数。
+
 ### Display modes
 
 | Mode | Behavior |
